@@ -28,8 +28,10 @@ class OpenProjectInput(BaseModel):
     path: str
 
 
-@router.get("", response_model=WorkspaceInfo)
-def get_workspace(state: ApiState = Depends(get_state)) -> WorkspaceInfo:
+@router.get("", response_model=WorkspaceInfo | None)
+def get_workspace(state: ApiState = Depends(get_state)) -> WorkspaceInfo | None:
+    if state.repo is None:
+        return None
     project = state.repo.load_project()
     return WorkspaceInfo(path=str(state.repo.root), name=project.name)
 

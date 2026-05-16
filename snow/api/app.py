@@ -11,7 +11,7 @@ from snow.api.routers import decisions, orphans, project, sets, snowballing, wor
 from snow.api.state import ApiState
 
 
-def create_app(project_root: Path) -> FastAPI:
+def create_app(project_root: Path | None = None) -> FastAPI:
     app = FastAPI(title="Snow", version="0.1.0")
     app.state.snow = ApiState(project_root)
 

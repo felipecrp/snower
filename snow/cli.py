@@ -60,7 +60,7 @@ def import_bib(
     typer.echo(f"Imported {len(start.works)} works into {start.id}")
 
 
-def _configure_logging(project_root: Path) -> None:
+def _configure_logging(project_root: Path | None) -> None:
     fmt = logging.Formatter("%(asctime)s %(levelname)-8s %(name)s — %(message)s")
     snow_logger = logging.getLogger("snow")
     snow_logger.setLevel(logging.INFO)
@@ -69,22 +69,24 @@ def _configure_logging(project_root: Path) -> None:
     stream.setFormatter(fmt)
     snow_logger.addHandler(stream)
 
-    log_file = project_root / "snow.log"
-    file_handler = logging.FileHandler(log_file, encoding="utf-8")
-    file_handler.setFormatter(fmt)
-    snow_logger.addHandler(file_handler)
+    if project_root is not None:
+        log_file = project_root / "snow.log"
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setFormatter(fmt)
+        snow_logger.addHandler(file_handler)
 
 
 @app.command()
 def serve(
-    project: Path = typer.Option(Path("."), "--project", "-p", help="Project directory."),
+    project: Path | None = typer.Option(None, "--project", "-p", help="Project directory."),
     host: str = typer.Option("127.0.0.1", "--host"),
     port: int = typer.Option(8000, "--port"),
     reload: bool = typer.Option(False, "--reload"),
 ) -> None:
-    """Start the local FastAPI server bound to a project."""
-    repo = ProjectRepo(project)
-    if not repo.project_path().exists():
+    """Start the local FastAPI server. With no --project the UI shows the
+    workspace dialog and the user picks one (the frontend remembers the last
+    used project in localStorage)."""
+    if project is not None and not (project / "project.yml").exists():
         typer.echo(f"No snow project at {project} — run `snow init` first.", err=True)
         raise typer.Exit(code=1)
     _configure_logging(project)

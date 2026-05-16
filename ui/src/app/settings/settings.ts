@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
+import { Component, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { ApiService } from '../api.service';
@@ -53,12 +53,21 @@ export class SettingsComponent {
 
   constructor() {
     this.refresh();
+    effect(() => {
+      if (this.projectSvc.workspaceLoaded() && !this.projectSvc.workspace() && !this.dialog()) {
+        this.openDialog('open');
+      }
+    });
   }
 
   refresh(): void {
     this.api.getWorkspace().subscribe({
       next: (w) => this.workspace.set(w),
     });
+    if (!this.projectSvc.workspace() && !this.projectSvc.workspaceLoaded()) {
+      // App bootstrap will populate the project once a workspace is bound.
+      return;
+    }
     this.api.getProject().subscribe({
       next: (p) => {
         this.projectName.set(p.name);
@@ -68,7 +77,9 @@ export class SettingsComponent {
         this.researchers.set(p.researchers.map((r) => ({ ...r, originalId: r.id })));
         this.criteria.set(p.criteria.map((c) => ({ ...c, originalId: c.id })));
       },
-      error: (e) => this.error.set(`Failed to load project: ${e.message}`),
+      error: (e) => {
+        if (e.status !== 409) this.error.set(`Failed to load project: ${e.message}`);
+      },
     });
   }
 
@@ -123,7 +134,7 @@ export class SettingsComponent {
         this.dialogWorking.set(false);
         this.dialog.set(null);
         this.workspace.set(w);
-        this.projectSvc.refresh();
+        this.projectSvc.applyWorkspace(w);
         this.refresh();
       },
       error: (e) => {

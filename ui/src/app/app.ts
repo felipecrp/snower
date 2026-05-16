@@ -26,7 +26,7 @@ export class App implements OnInit {
   readonly selectValue = computed(() => this.activeResearcherId());
 
   ngOnInit(): void {
-    this.projectSvc.refresh();
+    this.projectSvc.bootstrapWorkspace();
   }
 
   onResearcherChange(value: string | null): void {

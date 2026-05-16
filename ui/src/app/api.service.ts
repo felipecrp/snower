@@ -64,8 +64,8 @@ export class ApiService {
     });
   }
 
-  getWorkspace(): Observable<WorkspaceInfo> {
-    return this.http.get<WorkspaceInfo>('/api/workspace');
+  getWorkspace(): Observable<WorkspaceInfo | null> {
+    return this.http.get<WorkspaceInfo | null>('/api/workspace');
   }
 
   newProject(path: string, name: string, description?: string): Observable<WorkspaceInfo> {
