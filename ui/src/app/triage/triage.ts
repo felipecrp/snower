@@ -17,6 +17,7 @@ import { ResearcherService } from '../researcher.service';
 type SortField = 'author' | 'title' | 'venue' | 'criterion';
 type CriterionDialog = { verdict: 'accept' | 'reject'; workId: string };
 type VisibilityMode = 'pending' | 'selected' | 'rejected' | 'all' | 'custom';
+type TriageCounts = { selected: number; rejected: number; total: number; shown: number };
 
 const SORT_FIELDS: SortField[] = ['author', 'title', 'venue', 'criterion'];
 const VISIBILITY_MODES: VisibilityMode[] = ['pending', 'selected', 'rejected', 'all'];
@@ -70,6 +71,23 @@ export class TriageComponent {
   readonly excludeCriteria = computed(
     () => this.project()?.criteria.filter((c) => c.kind === 'exclude') ?? [],
   );
+  readonly triageCounts = computed<TriageCounts>(() => {
+    const set = this.currentSet();
+    if (!set) return { selected: 0, rejected: 0, total: 0, shown: 0 };
+    let selected = 0;
+    let rejected = 0;
+    for (const work of set.works) {
+      const verdict = this.decisionFor(work.id)?.verdict;
+      if (verdict === 'accept') selected += 1;
+      if (verdict === 'reject') rejected += 1;
+    }
+    return {
+      selected,
+      rejected,
+      total: set.works.length,
+      shown: this.filteredWorks().length,
+    };
+  });
   readonly selectedWork = computed(() => {
     const works = this.filteredWorks();
     return works.find((w) => w.id === this.selectedWorkId()) ?? works[0] ?? null;
@@ -203,7 +221,7 @@ export class TriageComponent {
       note: this.noteFor(work.id) || null,
     };
     this.rememberCriterion(body.verdict, criterion.id);
-    this.putDecision(set.id, work.id, body, me);
+    this.putDecision(set.id, work.id, body, me, this.fallbackSelectionAfter(work.id));
   }
 
   selectWork(workId: string): void {
@@ -265,7 +283,7 @@ export class TriageComponent {
       note: this.noteFor(dialog.workId) || null,
     };
     this.rememberCriterion(dialog.verdict, criterion.id);
-    this.putDecision(set.id, dialog.workId, body, me);
+    this.putDecision(set.id, dialog.workId, body, me, this.fallbackSelectionAfter(dialog.workId));
     this.closeCriterionDialog();
   }
 
@@ -289,13 +307,20 @@ export class TriageComponent {
     this.putDecision(set.id, work.id, body, me);
   }
 
-  private putDecision(setId: string, workId: string, body: DecisionInput, me: string): void {
+  private putDecision(
+    setId: string,
+    workId: string,
+    body: DecisionInput,
+    me: string,
+    fallbackWorkId: string | null = null,
+  ): void {
     this.api.upsertDecision(setId, workId, body).subscribe({
       next: (saved) => {
         this.decisions.update((all) => [
           ...all.filter((d) => !(d.work_id === workId && d.researcher_id === me)),
           saved,
         ]);
+        this.selectFallbackIfHidden(workId, fallbackWorkId);
         this.clearDraft(workId);
         this.error.set(null);
       },
@@ -312,6 +337,23 @@ export class TriageComponent {
 
   private findCriterion(id: string): Criterion | undefined {
     return this.project()?.criteria.find((c) => c.id === id);
+  }
+
+  private fallbackSelectionAfter(workId: string): string | null {
+    const works = this.filteredWorks();
+    const index = works.findIndex((w) => w.id === workId);
+    if (index < 0) return null;
+    return works[index + 1]?.id ?? works[index - 1]?.id ?? null;
+  }
+
+  private selectFallbackIfHidden(workId: string, fallbackWorkId: string | null): void {
+    if (this.filteredWorks().some((w) => w.id === workId)) return;
+    if (!fallbackWorkId) {
+      this.selectedWorkId.set(null);
+      return;
+    }
+    this.selectedWorkId.set(fallbackWorkId);
+    setTimeout(() => this.scrollToWork(fallbackWorkId));
   }
 
   private moveSelection(delta: number): void {
@@ -379,10 +421,18 @@ export class TriageComponent {
   }
 
   private scrollToWork(workId: string): void {
-    document.getElementById(`work-${workId}`)?.scrollIntoView({
-      block: 'nearest',
-      behavior: 'smooth',
-    });
+    const work = document.getElementById(`work-${workId}`);
+    const container = document.querySelector<HTMLElement>('.works');
+    const filters = document.querySelector<HTMLElement>('.filters');
+    if (!work || !container) return;
+    const workRect = work.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const topEdge = filters?.getBoundingClientRect().bottom ?? containerRect.top;
+    if (workRect.top < topEdge) {
+      container.scrollBy({ top: workRect.top - topEdge - 12, behavior: 'smooth' });
+    } else if (workRect.bottom > containerRect.bottom) {
+      container.scrollBy({ top: workRect.bottom - containerRect.bottom + 12, behavior: 'smooth' });
+    }
   }
 
   private sortWorks(works: Work[]): Work[] {

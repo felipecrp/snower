@@ -6,6 +6,7 @@
     'topbar topbar'
     'sets   works';
   height: 100vh;
+  overflow: hidden;
   font-family: system-ui, sans-serif;
   color: #1f2328;
 }
@@ -38,6 +39,7 @@
   grid-area: sets;
   border-right: 1px solid #e5e7eb;
   padding: 1rem 0.5rem;
+  min-height: 0;
   overflow-y: auto;
 
   h3 { margin: 0 0.5rem 0.5rem; font-size: 0.85rem; text-transform: uppercase; color: #6b7280; }
@@ -72,12 +74,17 @@
 .works {
   grid-area: works;
   padding: 1rem 1.5rem;
+  min-height: 0;
   overflow-y: auto;
+  scroll-padding-top: 5.75rem;
 
   h2 { margin-top: 0; }
 }
 
 .filters {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 3;
   display: flex;
   align-items: center;
   gap: 1.25rem;
@@ -87,6 +94,7 @@
   border: 1px solid #e5e7eb;
   border-radius: 6px;
   font-size: 0.9rem;
+  box-shadow: 0 0.25rem 0 0.5rem white;
 
   label {
     display: inline-flex;
@@ -106,8 +114,15 @@
 
   .counts {
     margin-left: auto;
+    display: inline-flex;
+    gap: 0.7rem;
     color: #6b7280;
     font-size: 0.85rem;
+
+    strong {
+      color: #1f2328;
+      margin-right: 0.2rem;
+    }
   }
 }
 
@@ -153,7 +168,7 @@
     gap: 0.5rem;
     align-items: center;
 
-    select, input[type="text"], button {
+    select, input[type="text"] {
       font-size: 0.9rem;
       padding: 0.35rem 0.55rem;
       border-radius: 6px;
@@ -163,12 +178,6 @@
 
     input[type="text"] { flex: 1; min-width: 180px; }
 
-    button {
-      cursor: pointer;
-      &.accept { background: #059669; color: white; border-color: #059669; }
-      &.reject { background: #dc2626; color: white; border-color: #dc2626; }
-    }
-
     .badge {
       padding: 0.2rem 0.55rem;
       border-radius: 999px;
@@ -176,8 +185,6 @@
       &.accept { background: #d1fae5; color: #065f46; }
       &.reject { background: #fee2e2; color: #991b1b; }
     }
-
-    .criterion, .note { font-size: 0.85rem; color: #6b7280; }
   }
 }
 

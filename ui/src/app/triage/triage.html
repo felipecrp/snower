@@ -70,8 +70,11 @@
         />
         show rejected papers
       </label>
-      <span class="counts">
-        {{ filteredWorks().length }} of {{ cs.works.length }} shown
+      <span class="counts" *ngIf="triageCounts() as counts">
+        <strong>{{ counts.selected }}</strong> selected
+        <strong>{{ counts.rejected }}</strong> rejected
+        <strong>{{ counts.total }}</strong> total
+        <span>{{ counts.shown }} shown</span>
       </span>
     </div>
 
