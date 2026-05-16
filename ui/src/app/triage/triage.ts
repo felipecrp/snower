@@ -14,6 +14,8 @@ import {
 } from '../models';
 import { ResearcherService } from '../researcher.service';
 
+type SortField = 'author' | 'title' | 'venue' | 'criterion';
+
 @Component({
   selector: 'app-triage',
   standalone: true,
@@ -35,18 +37,20 @@ export class TriageComponent {
 
   readonly showSelected = signal(true);
   readonly showRejected = signal(false);
+  readonly sortField = signal<SortField>('author');
 
   readonly filteredWorks = computed(() => {
     const set = this.currentSet();
     if (!set) return [];
     const showSel = this.showSelected();
     const showRej = this.showRejected();
-    return set.works.filter((w) => {
+    const works = set.works.filter((w) => {
       const verdict = this.decisionFor(w.id)?.verdict;
       if (!verdict) return true;
       if (verdict === 'accept') return showSel;
       return showRej;
     });
+    return this.sortWorks(works);
   });
 
   readonly includeCriteria = computed(
@@ -181,6 +185,34 @@ export class TriageComponent {
 
   private findCriterion(id: string): Criterion | undefined {
     return this.project()?.criteria.find((c) => c.id === id);
+  }
+
+  private sortWorks(works: Work[]): Work[] {
+    const sortField = this.sortField();
+    return [...works].sort((a, b) => {
+      const bySelectedField = this.compareSortValue(
+        this.sortValue(a, sortField),
+        this.sortValue(b, sortField),
+      );
+      if (bySelectedField !== 0) return bySelectedField;
+      return this.compareSortValue(this.sortValue(a, 'title'), this.sortValue(b, 'title'));
+    });
+  }
+
+  private sortValue(work: Work, field: SortField): string {
+    if (field === 'author') return work.authors[0] ?? '';
+    if (field === 'title') return work.title;
+    if (field === 'venue') return work.venue ?? '';
+    const criterionId = this.decisionFor(work.id)?.criterion_id;
+    if (!criterionId) return '';
+    const criterion = this.findCriterion(criterionId);
+    return criterion ? `${criterion.description} ${criterion.id}` : criterionId;
+  }
+
+  private compareSortValue(a: string, b: string): number {
+    if (!a && b) return 1;
+    if (a && !b) return -1;
+    return a.localeCompare(b, undefined, { sensitivity: 'base' });
   }
 
   trackById = (_: number, x: { id: string }) => x.id;

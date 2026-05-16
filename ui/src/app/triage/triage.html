@@ -41,6 +41,19 @@
     <h2>{{ cs.id }} — {{ cs.kind }} (iteration {{ cs.iteration }})</h2>
 
     <div class="filters">
+      <label class="sort-control" for="sort-field">
+        sort by
+        <select
+          id="sort-field"
+          [ngModel]="sortField()"
+          (ngModelChange)="sortField.set($event)"
+        >
+          <option value="author">author</option>
+          <option value="title">title</option>
+          <option value="venue">journal/conference</option>
+          <option value="criterion">criterion</option>
+        </select>
+      </label>
       <label>
         <input
           type="checkbox"
@@ -84,12 +97,12 @@
             <option [ngValue]="null">— no decision —</option>
             <optgroup label="Include (accept)">
               <option *ngFor="let c of includeCriteria()" [ngValue]="c.id">
-                {{ c.description }}
+                {{ c.id }}: {{ c.description }}
               </option>
             </optgroup>
             <optgroup label="Exclude (reject)">
               <option *ngFor="let c of excludeCriteria()" [ngValue]="c.id">
-                {{ c.description }}
+                {{ c.id }}: {{ c.description }}
               </option>
             </optgroup>
           </select>
