@@ -62,7 +62,16 @@ export class TriageComponent {
     const set = this.currentSet();
     if (!set) return [];
     if (this.resultsMode()) {
-      return this.sortWorks(set.works.filter((w) => this.consensusFor(w.id) === 'accept'));
+      const showSel = this.showSelected();
+      const showRej = this.showRejected();
+      return this.sortWorks(
+        set.works.filter((w) => {
+          const verdict = this.consensusFor(w.id);
+          if (!verdict) return false;
+          if (verdict === 'accept') return showSel;
+          return showRej;
+        }),
+      );
     }
     const showSel = this.showSelected();
     const showRej = this.showRejected();

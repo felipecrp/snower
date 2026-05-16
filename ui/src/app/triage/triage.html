@@ -110,7 +110,9 @@
 
       <footer class="triage">
         <ng-container *ngIf="resultsMode(); else triageMode">
-          <span class="badge accept">accepted by consensus</span>
+          <span class="badge" [class.accept]="consensusFor(w.id) === 'accept'" [class.reject]="consensusFor(w.id) === 'reject'">
+            {{ consensusFor(w.id) }} by consensus
+          </span>
           <span class="consensus-votes">
             {{ voteCountsFor(w.id).selected }} accept · {{ voteCountsFor(w.id).rejected }} reject
           </span>
