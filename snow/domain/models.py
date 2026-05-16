@@ -100,7 +100,6 @@ class Set(BaseModel):
     id: str
     kind: SetKind
     iteration: int
-    parent_set_id: str | None = None
     works: list[Work] = Field(default_factory=list)
 
 

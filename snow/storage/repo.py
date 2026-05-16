@@ -176,14 +176,12 @@ class ProjectRepo:
         else:
             iteration = int(metadata.get("iteration", 0))
             kind = SetKind.ORPHAN
-        parent_set_id = metadata.get("parent_set_id")
         works = bib.load(paths.articles)
         self._merge_snowball_timestamps(works)
         return Set(
             id=set_id,
             kind=kind,
             iteration=iteration,
-            parent_set_id=parent_set_id,
             works=works,
         )
 
@@ -193,25 +191,13 @@ class ProjectRepo:
         yml.dump(
             s.model_dump(
                 mode="json",
-                include={"id", "kind", "iteration", "parent_set_id"},
+                include={"id", "kind", "iteration"},
                 exclude_none=True,
             ),
             paths.metadata,
         )
         self._renormalize_keys(s.works)
         bib.dump(s.works, paths.articles)
-
-    def start_snowballing(self, parent_set_id: str, kind: SetKind) -> Set:
-        parent = self.load_set(parent_set_id)
-        new_set = Set(
-            id=f"{self._next_set_index():02d}-{kind.value}",
-            kind=kind,
-            iteration=parent.iteration + 1,
-            parent_set_id=parent.id,
-            works=[],
-        )
-        self.save_set(new_set)
-        return new_set
 
     def _next_set_index(self) -> int:
         ids = [sid for sid in self.list_set_ids() if _SET_DIR_PATTERN.match(sid)]

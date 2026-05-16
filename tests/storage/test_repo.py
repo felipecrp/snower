@@ -162,18 +162,6 @@ class DescribeProjectRepoSets:
         decisions, _ = repo.load_decisions("00-start")
         assert decisions[0].work_id == "sha1:7775895baced66ce"
 
-    def it_starts_snowballing_set(self, tmp_path: Path, project: Project, sample_works: list[Work]):
-        repo = ProjectRepo(tmp_path / "proj")
-        repo.init(project)
-        repo.import_start_set(sample_works)
-        backward = repo.start_snowballing("00-start", SetKind.BACKWARD)
-        assert backward.id == "01-backward"
-        assert backward.kind == SetKind.BACKWARD
-        assert backward.iteration == 1
-        assert backward.parent_set_id == "00-start"
-        assert backward.works == []
-        assert repo.load_set("01-backward").parent_set_id == "00-start"
-
     def it_rejects_invalid_set_id(self, tmp_path: Path, project: Project):
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)

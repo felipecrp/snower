@@ -57,7 +57,6 @@ export interface ReviewSet {
   id: string;
   kind: SetKind;
   iteration: number;
-  parent_set_id?: string | null;
   works: Work[];
 }
 

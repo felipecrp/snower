@@ -29,26 +29,3 @@ class DescribeGetSet:
         assert r.status_code == 404
 
 
-class DescribeStartSnowballing:
-    def it_starts_a_backward_set(self, client: TestClient):
-        r = client.post("/api/sets/00-start/snowballing/backward")
-        assert r.status_code == 201
-        body = r.json()
-        assert body["id"] == "01-backward"
-        assert body["kind"] == "backward"
-        assert body["iteration"] == 1
-        assert body["parent_set_id"] == "00-start"
-        assert body["works"] == []
-
-    def it_starts_a_forward_set(self, client: TestClient):
-        r = client.post("/api/sets/00-start/snowballing/forward")
-        assert r.status_code == 201
-        assert r.json()["id"] == "01-forward"
-
-    def it_rejects_start_kind(self, client: TestClient):
-        r = client.post("/api/sets/00-start/snowballing/start")
-        assert r.status_code == 400
-
-    def it_returns_404_for_missing_parent_set(self, client: TestClient):
-        r = client.post("/api/sets/01-backward/snowballing/forward")
-        assert r.status_code == 404
