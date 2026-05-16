@@ -5,13 +5,14 @@
   </div>
   <div class="topbar-right">
     <div class="researcher">
-      <label for="researcher">Researcher:</label>
+      <label for="view-as">View as:</label>
       <select
-        id="researcher"
-        [ngModel]="activeResearcherId()"
-        (ngModelChange)="setResearcher($event)"
+        id="view-as"
+        [ngModel]="selectValue()"
+        (ngModelChange)="onViewChange($event)"
       >
         <option [ngValue]="null">— select —</option>
+        <option [ngValue]="'__results__'">Results (consensus)</option>
         <option *ngFor="let r of project()?.researchers" [ngValue]="r.id">{{ r.name }}</option>
       </select>
     </div>
@@ -31,7 +32,9 @@
     >
       <span class="set-id">{{ s.id }}</span>
       <span class="set-kind">{{ s.kind }}</span>
-      <span class="set-count">{{ s.works.length }}</span>
+      <span class="set-count">
+        {{ consensusCountFor(s).accepted }}/{{ s.works.length }}
+      </span>
     </li>
   </ul>
   <div class="snowballing-actions">
@@ -44,8 +47,6 @@
   <div class="error" *ngIf="error() as err">{{ err }}</div>
 
   <ng-container *ngIf="currentSet() as cs">
-    <h2>{{ cs.id }} — {{ cs.kind }} (iteration {{ cs.iteration }})</h2>
-
     <div class="filters">
       <label class="sort-control" for="sort-field">
         sort by
@@ -108,42 +109,50 @@
       <p class="abstract" *ngIf="w.abstract">{{ w.abstract }}</p>
 
       <footer class="triage">
-        <ng-container *ngIf="activeResearcherId(); else needResearcher">
-          <select
-            [ngModel]="decisionFor(w.id)?.criterion_id ?? null"
-            (ngModelChange)="onCriterionChange(w, $event)"
-          >
-            <option [ngValue]="null">— no decision —</option>
-            <optgroup label="Include (accept)">
-              <option *ngFor="let c of includeCriteria()" [ngValue]="c.id">
-                {{ c.id }}: {{ c.description }}
-              </option>
-            </optgroup>
-            <optgroup label="Exclude (reject)">
-              <option *ngFor="let c of excludeCriteria()" [ngValue]="c.id">
-                {{ c.id }}: {{ c.description }}
-              </option>
-            </optgroup>
-          </select>
-
-          <ng-container *ngIf="decisionFor(w.id) as existing">
-            <span class="badge" [class.accept]="existing.verdict === 'accept'"
-                  [class.reject]="existing.verdict === 'reject'">
-              {{ existing.verdict }}
-            </span>
-          </ng-container>
-
-          <input
-            type="text"
-            placeholder="note (optional)"
-            [ngModel]="noteFor(w.id)"
-            (ngModelChange)="updateNoteDraft(w.id, $event)"
-            (blur)="saveNote(w)"
-            [disabled]="!decisionFor(w.id)"
-          />
+        <ng-container *ngIf="resultsMode(); else triageMode">
+          <span class="badge accept">accepted by consensus</span>
+          <span class="consensus-votes">
+            {{ voteCountsFor(w.id).selected }} accept · {{ voteCountsFor(w.id).rejected }} reject
+          </span>
         </ng-container>
-        <ng-template #needResearcher>
-          <em>Select an active researcher to triage.</em>
+        <ng-template #triageMode>
+          <ng-container *ngIf="activeResearcherId(); else needResearcher">
+            <select
+              [ngModel]="decisionFor(w.id)?.criterion_id ?? null"
+              (ngModelChange)="onCriterionChange(w, $event)"
+            >
+              <option [ngValue]="null">— no decision —</option>
+              <optgroup label="Include (accept)">
+                <option *ngFor="let c of includeCriteria()" [ngValue]="c.id">
+                  {{ c.id }}: {{ c.description }}
+                </option>
+              </optgroup>
+              <optgroup label="Exclude (reject)">
+                <option *ngFor="let c of excludeCriteria()" [ngValue]="c.id">
+                  {{ c.id }}: {{ c.description }}
+                </option>
+              </optgroup>
+            </select>
+
+            <ng-container *ngIf="decisionFor(w.id) as existing">
+              <span class="badge" [class.accept]="existing.verdict === 'accept'"
+                    [class.reject]="existing.verdict === 'reject'">
+                {{ existing.verdict }}
+              </span>
+            </ng-container>
+
+            <input
+              type="text"
+              placeholder="note (optional)"
+              [ngModel]="noteFor(w.id)"
+              (ngModelChange)="updateNoteDraft(w.id, $event)"
+              (blur)="saveNote(w)"
+              [disabled]="!decisionFor(w.id)"
+            />
+          </ng-container>
+          <ng-template #needResearcher>
+            <em>Select an active researcher to triage.</em>
+          </ng-template>
         </ng-template>
       </footer>
     </article>

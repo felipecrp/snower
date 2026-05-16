@@ -110,7 +110,6 @@
   overflow-y: auto;
   scroll-padding-top: 5rem;
 
-  h2 { margin-top: 0; }
 }
 
 .filters {
@@ -206,6 +205,11 @@
     border-radius: 999px;
     &.accept { background: #d1fae5; color: #065f46; }
     &.reject { background: #fee2e2; color: #991b1b; }
+  }
+
+  .consensus-votes {
+    font-size: 0.82rem;
+    color: #6b7280;
   }
 
   .triage {

@@ -39,10 +39,12 @@ export class TriageComponent {
   readonly sets = signal<ReviewSet[]>([]);
   readonly currentSet = signal<ReviewSet | null>(null);
   readonly decisions = signal<Decision[]>([]);
+  readonly allDecisions = signal<Record<string, Decision[]>>({});
   readonly draft = signal<Record<string, DecisionInput>>({});
   readonly activeResearcherId = this.researcherSvc.activeId;
   readonly error = signal<string | null>(null);
 
+  readonly resultsMode = signal(false);
   readonly showSelected = signal(true);
   readonly showRejected = signal(false);
   readonly sortField = signal<SortField>('author');
@@ -54,10 +56,14 @@ export class TriageComponent {
   readonly highlightedCriterionIndex = signal(0);
   readonly lastCriterionByVerdict = signal<Partial<Record<'accept' | 'reject', string>>>({});
   readonly settingsIcon = faGear;
+  readonly selectValue = computed(() => (this.resultsMode() ? '__results__' : this.activeResearcherId()));
 
   readonly filteredWorks = computed(() => {
     const set = this.currentSet();
     if (!set) return [];
+    if (this.resultsMode()) {
+      return this.sortWorks(set.works.filter((w) => this.consensusFor(w.id) === 'accept'));
+    }
     const showSel = this.showSelected();
     const showRej = this.showRejected();
     const works = set.works.filter((w) => {
@@ -133,6 +139,11 @@ export class TriageComponent {
       next: (s) => {
         this.sets.set(s);
         if (s.length && !this.currentSet()) this.selectSet(s[0]);
+        s.forEach((set) => {
+          this.api.getDecisions(set.id).subscribe({
+            next: (r) => this.allDecisions.update((all) => ({ ...all, [set.id]: r.decisions })),
+          });
+        });
       },
       error: (e) => this.error.set(`Failed to load sets: ${e.message}`),
     });
@@ -188,6 +199,15 @@ export class TriageComponent {
     }
   }
 
+  onViewChange(value: string | null): void {
+    if (value === '__results__') {
+      this.resultsMode.set(true);
+    } else {
+      this.resultsMode.set(false);
+      this.researcherSvc.set(value || null);
+    }
+  }
+
   setResearcher(id: string | null): void {
     this.researcherSvc.set(id || null);
   }
@@ -202,6 +222,28 @@ export class TriageComponent {
     const me = this.activeResearcherId();
     if (!me) return undefined;
     return this.decisions().find((d) => d.work_id === workId && d.researcher_id === me);
+  }
+
+  consensusCountFor(set: ReviewSet): { accepted: number; total: number } {
+    const setDecisions = this.allDecisions()[set.id] ?? [];
+    let accepted = 0;
+    for (const work of set.works) {
+      const votes = { selected: 0, rejected: 0 };
+      for (const d of setDecisions) {
+        if (d.work_id !== work.id) continue;
+        if (d.verdict === 'accept') votes.selected++;
+        else votes.rejected++;
+      }
+      if (votes.selected > votes.rejected) accepted++;
+    }
+    return { accepted, total: set.works.length };
+  }
+
+  consensusFor(workId: string): 'accept' | 'reject' | null {
+    const { selected, rejected } = this.voteCountsFor(workId);
+    if (selected > rejected) return 'accept';
+    if (rejected > selected) return 'reject';
+    return null;
   }
 
   voteCountsFor(workId: string): { selected: number; rejected: number } {
