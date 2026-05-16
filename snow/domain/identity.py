@@ -12,10 +12,8 @@ from __future__ import annotations
 
 import hashlib
 import re
-import string
 import unicodedata
 from dataclasses import dataclass
-from typing import Iterator
 
 _DOI_URL_PREFIX = re.compile(r"^(?:https?://)?(?:dx\.)?doi\.org/", re.IGNORECASE)
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
@@ -81,27 +79,41 @@ def work_id(ref: WorkRef) -> str:
     return f"sha1:{digest}"
 
 
-def _letter_suffixes() -> Iterator[str]:
-    """Yield 'a', 'b', ..., 'z', 'aa', 'ab', ... for disambiguation."""
-    for letter in string.ascii_lowercase:
-        yield letter
-    for first in string.ascii_lowercase:
-        for second in string.ascii_lowercase:
-            yield first + second
+_MIN_SLUG_WORD_LEN = 5  # words with 4 or fewer chars are skipped (common short / stopwords)
+
+
+def _title_slug(title: str | None, n_words: int = 2) -> str:
+    """First `n_words` long-enough tokens of the normalized title, joined."""
+    normalized = normalize_title(title or "")
+    if not normalized:
+        return ""
+    tokens = [w for w in normalized.split() if len(w) >= _MIN_SLUG_WORD_LEN]
+    if not tokens:
+        # Title has no long-enough words; fall back to whatever is there.
+        tokens = normalized.split()
+    return "".join(tokens[:n_words])
+
+
+def _title_hash(title: str | None, length: int = 4) -> str:
+    """Short hex digest of the normalized title, used to disambiguate collisions."""
+    payload = normalize_title(title or "").encode()
+    return hashlib.sha1(payload, usedforsecurity=False).hexdigest()[:length]
 
 
 def mint_bib_key(ref: WorkRef, taken: set[str]) -> str:
     """Return a unique BibTeX key for `ref`, avoiding any string in `taken`.
 
-    Pattern: `<surname><year><letter>`. Falls back to `anon` (no author) and
-    `nd` (no year). Letter suffix grows as `a..z, aa..zz` on collision.
+    Pattern: `<surname><year><slug>` where `slug` is the first two title words
+    of 5+ chars. Falls back to `anon` / `nd` / `untitled` when fields are
+    missing. On collision with a different work, appends `_<hash4>`
+    (deterministic from the full title) so two clients minting the same paper
+    concurrently arrive at the same key.
     """
     surname = normalize_author_surname(ref.authors[0]) if ref.authors else "anon"
     surname = surname or "anon"
     year = str(ref.year) if ref.year else "nd"
-    base = f"{surname}{year}"
-    for suffix in _letter_suffixes():
-        candidate = f"{base}{suffix}"
-        if candidate not in taken:
-            return candidate
-    raise RuntimeError(f"Exhausted disambiguation suffixes for base={base!r}")
+    slug = _title_slug(ref.title) or "untitled"
+    base = f"{surname}{year}{slug}"
+    if base not in taken:
+        return base
+    return f"{base}_{_title_hash(ref.title)}"

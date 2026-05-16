@@ -66,11 +66,17 @@ doc/                   # Project documentation
 
 ## Data Identity
 
-Every paper gets a stable `work_id`:
-1. `doi:<normalized>` when DOI is available (authoritative, URL-prefix stripped, lowercased)
-2. `sha1:<hex16>` of `surname|year|title` (Unicode-normalized, diacritics removed)
+Every paper gets a stable `work_id` = `sha1:<hex16>` of `surname|year|title`
+(Unicode-normalized, diacritics removed). DOI is metadata only, never part of
+identity — so enriching a paper with a DOI later doesn't change its `work_id`
+or decisions.
 
-BibTeX keys follow `<surname><year><letter>` (e.g. `wohlin2014a`). The global registry is `keys.yml`.
+BibTeX keys follow `<surname><year><slug>` where `slug` is the first two
+title words of 5+ characters (e.g. `wohlin2014snowballingsystematic`). When
+two different works collide on the same surname+year+slug, a short hash of
+the full title is appended (`wohlin2014snowballingstudies_8a2b`), deterministic
+across clients. Falls back to `anon` / `nd` / `untitled` for missing fields.
+The global registry is `keys.yml`.
 
 ## Snowballing Logic
 

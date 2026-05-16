@@ -205,71 +205,95 @@ class DescribeProjectRepoDecisions:
 
 
 class DescribeProjectRepoKeyMinting:
-    def it_renames_imported_keys_to_surname_year_letter(self, tmp_path: Path, project: Project):
+    def it_renames_imported_keys_to_surname_year_slug(self, tmp_path: Path, project: Project):
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)
         works = [
             Work(
-                id="sha1:7a611379c566500f",
+                id="sha1:placeholder",
                 bib_key="garbageId123",
-                title="Snowballing",
+                title="Snowballing in systematic literature reviews",
                 authors=["Wohlin, Claus"],
                 year=2014,
                 doi="10/wohlin",
             )
         ]
         start = repo.import_start_set(works)
-        assert start.works[0].bib_key == "wohlin2014a"
-        assert repo.load_keys() == {"wohlin2014a": "sha1:7a611379c566500f"}
+        assert start.works[0].bib_key == "wohlin2014snowballingsystematic"
+        # The stored work_id is the canonical sha1 of (surname|year|title),
+        # whatever was passed in import_start_set is overwritten.
+        keys = repo.load_keys()
+        assert list(keys.keys()) == ["wohlin2014snowballingsystematic"]
+        assert keys["wohlin2014snowballingsystematic"] == start.works[0].id
 
-    def it_disambiguates_with_letters_for_same_author_year(
+    def it_disambiguates_with_hash_when_slug_collides(
         self, tmp_path: Path, project: Project
     ):
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)
         works = [
-            Work(id="sha1:23440077d4c90157", bib_key="x", title="T1", authors=["Wohlin, Claus"], year=2014, doi="10/a"),
-            Work(id="sha1:a30b2382d7a2ea0f", bib_key="y", title="T2", authors=["Wohlin, Claus"], year=2014, doi="10/b"),
-            Work(id="sha1:65b4f475f6256261", bib_key="z", title="T3", authors=["Wohlin, Claus"], year=2014, doi="10/c"),
+            Work(id="sha1:23440077d4c90157", bib_key="x",
+                 title="Snowballing studies version one",
+                 authors=["Wohlin, Claus"], year=2014, doi="10/a"),
+            Work(id="sha1:a30b2382d7a2ea0f", bib_key="y",
+                 title="Snowballing studies version two",
+                 authors=["Wohlin, Claus"], year=2014, doi="10/b"),
         ]
         start = repo.import_start_set(works)
-        assert [w.bib_key for w in start.works] == ["wohlin2014a", "wohlin2014b", "wohlin2014c"]
+        first, second = (w.bib_key for w in start.works)
+        assert first == "wohlin2014snowballingstudies"
+        assert second.startswith("wohlin2014snowballingstudies_")
+        assert len(second.split("_")[-1]) == 4
 
     def it_reuses_existing_key_when_work_id_already_known(
         self, tmp_path: Path, project: Project
     ):
+        from snow.domain.identity import WorkRef, work_id
         from snow.domain.models import Set as ReviewSet
         from snow.domain.models import SetKind as Kind
 
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)
         repo.import_start_set(
-            [Work(id="sha1:1b7d6438c9db5159", bib_key="x", title="T", authors=["Wohlin, Claus"], year=2014, doi="10/a")]
+            [Work(id="sha1:placeholder", bib_key="x",
+                  title="Snowballing systematic review",
+                  authors=["Wohlin, Claus"], year=2014, doi="10/a")]
         )
+        # Use the same canonical work_id so the reuse path triggers.
+        same_id = work_id(WorkRef(title="Snowballing systematic review",
+                                  authors=("Wohlin, Claus",), year=2014))
         new_set = ReviewSet(
             id="01-backward",
             kind=Kind.BACKWARD,
             iteration=1,
             works=[
-                Work(id="sha1:1b7d6438c9db5159", bib_key="reimported", title="T", authors=["Wohlin"], year=2014, doi="10/a"),
-                Work(id="sha1:fbb4c753aeb8d236", bib_key="other", title="U", authors=["Wohlin, Claus"], year=2014, doi="10/b"),
+                Work(id=same_id, bib_key="reimported",
+                     title="Snowballing systematic review",
+                     authors=["Wohlin"], year=2014, doi="10/a"),
+                Work(id="sha1:other-placeholder", bib_key="other",
+                     title="Guidelines for empirical research",
+                     authors=["Wohlin, Claus"], year=2014, doi="10/b"),
             ],
         )
         repo.save_set(new_set)
-        assert new_set.works[0].bib_key == "wohlin2014a"
-        assert new_set.works[1].bib_key == "wohlin2014b"
+        assert new_set.works[0].bib_key == "wohlin2014snowballingsystematic"
+        assert new_set.works[1].bib_key == "wohlin2014guidelinesempirical"
 
     def it_persists_keys_yml_sorted(self, tmp_path: Path, project: Project):
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)
         repo.import_start_set(
             [
-                Work(id="sha1:1f3edef7e27228c2", bib_key="zz", title="Z", authors=["Zeta, Z"], year=2020, doi="10/z"),
-                Work(id="sha1:7775895baced66ce", bib_key="aa", title="A", authors=["Alpha, A"], year=2020, doi="10/a"),
+                Work(id="sha1:1f3edef7e27228c2", bib_key="zz",
+                     title="Snowballing literature review",
+                     authors=["Zeta, Z"], year=2020, doi="10/z"),
+                Work(id="sha1:7775895baced66ce", bib_key="aa",
+                     title="Snowballing literature review",
+                     authors=["Alpha, A"], year=2020, doi="10/a"),
             ]
         )
         text = (tmp_path / "proj" / "keys.yml").read_text()
-        assert text.index("alpha2020a") < text.index("zeta2020a")
+        assert text.index("alpha2020") < text.index("zeta2020")
 
 
 class DescribeProjectRepoRelations:

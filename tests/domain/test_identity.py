@@ -80,28 +80,50 @@ class DescribeWorkId:
 
 
 class DescribeMintBibKey:
-    def it_uses_first_letter_when_unused(self):
-        ref = WorkRef(title="T", authors=("Wohlin, Claus",), year=2014)
-        assert mint_bib_key(ref, taken=set()) == "wohlin2014a"
+    def it_uses_first_two_long_title_words(self):
+        ref = WorkRef(
+            title="Snowballing in systematic literature reviews",
+            authors=("Wohlin, Claus",),
+            year=2014,
+        )
+        assert mint_bib_key(ref, taken=set()) == "wohlin2014snowballingsystematic"
 
-    def it_picks_next_letter_on_collision(self):
-        ref = WorkRef(title="T", authors=("Wohlin, Claus",), year=2014)
-        assert mint_bib_key(ref, taken={"wohlin2014a"}) == "wohlin2014b"
-        assert mint_bib_key(ref, taken={"wohlin2014a", "wohlin2014b"}) == "wohlin2014c"
+    def it_skips_words_with_four_or_fewer_chars(self):
+        ref = WorkRef(
+            title="Case study research and data in software engineering",
+            authors=("Wohlin, Claus",),
+            year=2014,
+        )
+        # "case" (4), "and" (3), "data" (4), "in" (2) are skipped.
+        assert mint_bib_key(ref, taken=set()) == "wohlin2014studyresearch"
 
-    def it_falls_back_to_two_letters_after_z(self):
-        ref = WorkRef(title="T", authors=("Wohlin, Claus",), year=2014)
-        taken = {f"wohlin2014{c}" for c in "abcdefghijklmnopqrstuvwxyz"}
-        assert mint_bib_key(ref, taken=taken) == "wohlin2014aa"
+    def it_appends_short_hash_on_collision(self):
+        ref = WorkRef(
+            title="Snowballing in systematic literature reviews",
+            authors=("Wohlin, Claus",),
+            year=2014,
+        )
+        taken = {"wohlin2014snowballingsystematic"}
+        key = mint_bib_key(ref, taken=taken)
+        assert key.startswith("wohlin2014snowballingsystematic_")
+        assert len(key.split("_")[-1]) == 4
+
+    def it_falls_back_to_untitled_when_no_title(self):
+        ref = WorkRef(title=None, authors=("Wohlin, Claus",), year=2014)
+        assert mint_bib_key(ref, taken=set()) == "wohlin2014untitled"
 
     def it_uses_anon_when_no_authors(self):
-        ref = WorkRef(title="T", year=2014)
-        assert mint_bib_key(ref, taken=set()) == "anon2014a"
+        ref = WorkRef(title="Systematic literature review", year=2014)
+        assert mint_bib_key(ref, taken=set()) == "anon2014systematicliterature"
 
     def it_uses_nd_when_no_year(self):
-        ref = WorkRef(title="T", authors=("Wohlin, Claus",))
-        assert mint_bib_key(ref, taken=set()) == "wohlinnda"
+        ref = WorkRef(title="Systematic literature review", authors=("Wohlin, Claus",))
+        assert mint_bib_key(ref, taken=set()) == "wohlinndsystematicliterature"
 
     def it_normalizes_author_surname_for_key(self):
-        ref = WorkRef(title="T", authors=("Müller, Hans",), year=2020)
-        assert mint_bib_key(ref, taken=set()) == "muller2020a"
+        ref = WorkRef(title="Systematic review", authors=("Müller, Hans",), year=2020)
+        assert mint_bib_key(ref, taken=set()) == "muller2020systematicreview"
+
+    def it_uses_short_words_as_fallback_when_no_long_ones(self):
+        ref = WorkRef(title="A B C D", authors=("Wohlin, Claus",), year=2014)
+        assert mint_bib_key(ref, taken=set()) == "wohlin2014ab"
