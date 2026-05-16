@@ -1,0 +1,74 @@
+<header class="topbar">
+  <div class="brand">
+    <a routerLink="/"><strong>Snow</strong></a>
+    <span class="crumb">— Settings</span>
+  </div>
+  <a routerLink="/" class="back">← back to triage</a>
+</header>
+
+<main>
+  <div class="error" *ngIf="error() as err">{{ err }}</div>
+  <div class="saved" *ngIf="saved() as msg">{{ msg }}</div>
+
+  <section>
+    <h2>Researchers</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>id</th>
+          <th>name</th>
+          <th>email</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let r of researchers(); let i = index">
+          <td><input type="text" [(ngModel)]="r.id" placeholder="alice" /></td>
+          <td><input type="text" [(ngModel)]="r.name" placeholder="Alice Researcher" /></td>
+          <td><input type="email" [(ngModel)]="r.email" placeholder="alice@example.com" /></td>
+          <td><button class="danger" (click)="removeResearcher(i)">Remove</button></td>
+        </tr>
+        <tr *ngIf="!researchers().length">
+          <td colspan="4"><em>No researchers yet.</em></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="actions">
+      <button (click)="addResearcher()">Add researcher</button>
+      <button class="primary" (click)="saveResearchers()">Save researchers</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Criteria</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>id</th>
+          <th>kind</th>
+          <th>description</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let c of criteria(); let i = index">
+          <td><input type="text" [(ngModel)]="c.id" placeholder="inc1" /></td>
+          <td>
+            <select [(ngModel)]="c.kind">
+              <option *ngFor="let k of criterionKinds" [value]="k">{{ k }}</option>
+            </select>
+          </td>
+          <td><input type="text" [(ngModel)]="c.description" placeholder="empirical study" /></td>
+          <td><button class="danger" (click)="removeCriterion(i)">Remove</button></td>
+        </tr>
+        <tr *ngIf="!criteria().length">
+          <td colspan="4"><em>No criteria yet.</em></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="actions">
+      <button (click)="addCriterion()">Add criterion</button>
+      <button class="primary" (click)="saveCriteria()">Save criteria</button>
+    </div>
+  </section>
+</main>

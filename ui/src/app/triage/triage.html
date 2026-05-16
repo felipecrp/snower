@@ -1,0 +1,121 @@
+<header class="topbar">
+  <div class="brand">
+    <strong>Snow</strong>
+    <span class="project" *ngIf="project() as p">— {{ p.name }}</span>
+  </div>
+  <div class="topbar-right">
+    <div class="researcher">
+      <label for="researcher">Researcher:</label>
+      <select
+        id="researcher"
+        [ngModel]="activeResearcherId()"
+        (ngModelChange)="setResearcher($event)"
+      >
+        <option [ngValue]="null">— select —</option>
+        <option *ngFor="let r of project()?.researchers" [ngValue]="r.id">{{ r.name }}</option>
+      </select>
+    </div>
+    <a routerLink="/settings" class="settings-link">Settings</a>
+  </div>
+</header>
+
+<aside class="sets">
+  <h3>Sets</h3>
+  <ul>
+    <li
+      *ngFor="let s of sets(); trackBy: trackById"
+      [class.active]="currentSet()?.id === s.id"
+      (click)="selectSet(s)"
+    >
+      <span class="set-id">{{ s.id }}</span>
+      <span class="set-kind">{{ s.kind }}</span>
+      <span class="set-count">{{ s.works.length }}</span>
+    </li>
+  </ul>
+</aside>
+
+<main class="works">
+  <div class="error" *ngIf="error() as err">{{ err }}</div>
+
+  <ng-container *ngIf="currentSet() as cs">
+    <h2>{{ cs.id }} — {{ cs.kind }} (iteration {{ cs.iteration }})</h2>
+
+    <div class="filters">
+      <label>
+        <input
+          type="checkbox"
+          [checked]="showSelected()"
+          (change)="showSelected.set($any($event.target).checked)"
+        />
+        show selected papers
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          [checked]="showRejected()"
+          (change)="showRejected.set($any($event.target).checked)"
+        />
+        show rejected papers
+      </label>
+      <span class="counts">
+        {{ filteredWorks().length }} of {{ cs.works.length }} shown
+      </span>
+    </div>
+
+    <article *ngFor="let w of filteredWorks(); trackBy: trackById" class="work">
+      <header>
+        <h3>{{ w.title }}</h3>
+        <div class="meta">
+          <span *ngIf="w.authors.length">{{ w.authors.join('; ') }}</span>
+          <span *ngIf="w.year"> · {{ w.year }}</span>
+          <span *ngIf="w.venue"> · {{ w.venue }}</span>
+          <a *ngIf="w.doi" [href]="'https://doi.org/' + w.doi" target="_blank">{{ w.doi }}</a>
+        </div>
+      </header>
+
+      <p class="abstract" *ngIf="w.abstract">{{ w.abstract }}</p>
+
+      <footer class="triage">
+        <ng-container *ngIf="activeResearcherId(); else needResearcher">
+          <select
+            [ngModel]="decisionFor(w.id)?.criterion_id ?? null"
+            (ngModelChange)="onCriterionChange(w, $event)"
+          >
+            <option [ngValue]="null">— no decision —</option>
+            <optgroup label="Include (accept)">
+              <option *ngFor="let c of includeCriteria()" [ngValue]="c.id">
+                {{ c.description }}
+              </option>
+            </optgroup>
+            <optgroup label="Exclude (reject)">
+              <option *ngFor="let c of excludeCriteria()" [ngValue]="c.id">
+                {{ c.description }}
+              </option>
+            </optgroup>
+          </select>
+
+          <ng-container *ngIf="decisionFor(w.id) as existing">
+            <span class="badge" [class.accept]="existing.verdict === 'accept'"
+                  [class.reject]="existing.verdict === 'reject'">
+              {{ existing.verdict }}
+            </span>
+          </ng-container>
+
+          <input
+            type="text"
+            placeholder="note (optional)"
+            [ngModel]="noteFor(w.id)"
+            (ngModelChange)="updateNoteDraft(w.id, $event)"
+            (blur)="saveNote(w)"
+            [disabled]="!decisionFor(w.id)"
+          />
+        </ng-container>
+        <ng-template #needResearcher>
+          <em>Select an active researcher to triage.</em>
+        </ng-template>
+      </footer>
+    </article>
+
+    <p *ngIf="!cs.works.length"><em>No works in this set.</em></p>
+  </ng-container>
+</main>
