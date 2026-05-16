@@ -31,9 +31,33 @@ class CriterionInput(BaseModel):
     previous_id: str | None = None
 
 
+class ProjectInfoInput(BaseModel):
+    name: str
+    description: str | None = None
+    openalex_email: str | None = None
+
+
 @router.get("", response_model=Project)
 def get_project(repo: ProjectRepo = Depends(get_repo)) -> Project:
     return repo.load_project()
+
+
+@router.put("/info", response_model=Project)
+def update_project_info(
+    body: ProjectInfoInput,
+    repo: ProjectRepo = Depends(get_repo),
+) -> Project:
+    project = repo.load_project()
+    project.name = body.name.strip()
+    project.description = body.description
+    # Update OpenAlex provider config
+    from snow.domain.models import ProviderConfig
+    other_providers = [p for p in project.providers if p.name != "openalex"]
+    if body.openalex_email:
+        other_providers.append(ProviderConfig(name="openalex", options={"email": body.openalex_email}))
+    project.providers = other_providers
+    repo.save_project(project)
+    return project
 
 
 @router.put("/researchers", response_model=list[Researcher])

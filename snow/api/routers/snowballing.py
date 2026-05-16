@@ -53,12 +53,29 @@ def run_snowballing_all(repo: ProjectRepo = Depends(get_repo)) -> list[Set]:
 @router.post("/{kind}", response_model=list[Set])
 def run_snowballing(
     kind: SetKind,
+    force: bool = False,
     repo: ProjectRepo = Depends(get_repo),
 ) -> list[Set]:
     if kind == SetKind.START:
         raise HTTPException(400, "Snowballing kind must be backward or forward.")
     provider = _get_provider(repo.load_project())
     try:
-        return repo.run_global_snowballing(kind, provider)
+        return repo.run_global_snowballing(kind, provider, force=force)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@router.post("/{kind}/{bib_key}", response_model=list[Set])
+def run_paper_snowballing(
+    kind: SetKind,
+    bib_key: str,
+    repo: ProjectRepo = Depends(get_repo),
+) -> list[Set]:
+    """Snowball a single paper. Returns all sets that were created or updated."""
+    if kind == SetKind.START:
+        raise HTTPException(400, "Snowballing kind must be backward or forward.")
+    provider = _get_provider(repo.load_project())
+    try:
+        return repo.run_paper_snowballing(kind, bib_key, provider)
+    except ValueError as e:
+        raise HTTPException(404, str(e))

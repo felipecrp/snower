@@ -33,8 +33,8 @@ def project_dir(tmp_path: Path) -> Path:
     )
     repo.import_start_set(
         [
-            Work(id="doi:10/a", bib_key="a2020", title="A", authors=["A, A"], year=2020, doi="10/a"),
-            Work(id="doi:10/b", bib_key="b2021", title="B", authors=["B, B"], year=2021, doi="10/b"),
+            Work(id="sha1:7775895baced66ce", bib_key="a2020", title="A", authors=["A, A"], year=2020, doi="10/a"),
+            Work(id="sha1:cdc005a8929a82bf", bib_key="b2021", title="B", authors=["B, B"], year=2021, doi="10/b"),
         ]
     )
     return root

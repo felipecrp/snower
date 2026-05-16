@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import time
 
-from snow.domain.identity import WorkRef
+from snow.domain.identity import BibliographicWork
 from snow.domain.models import Work
 from .base import Provider
 
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _REQUEST_DELAY = 2.0  # seconds between Scholar requests
 
 
-def _to_work_ref(bib: dict) -> WorkRef | None:
+def _to_work_ref(bib: dict) -> BibliographicWork | None:
     title = bib.get("title")
     if not title:
         return None
@@ -34,7 +34,7 @@ def _to_work_ref(bib: dict) -> WorkRef | None:
         year = None
     raw_authors = bib.get("author", "")
     authors: tuple[str, ...] = tuple(a.strip() for a in raw_authors.split(" and ") if a.strip())
-    return WorkRef(title=title, year=year, authors=authors)
+    return BibliographicWork(title=title, year=year, authors=authors)
 
 
 class ScholarlyProvider(Provider):
@@ -66,7 +66,7 @@ class ScholarlyProvider(Provider):
 
         return pub
 
-    def fetch_references(self, work: Work) -> list[WorkRef]:
+    def fetch_references(self, work: Work) -> list[BibliographicWork]:
         s = self._scholarly()
         pub = self._find_pub(work)
         if pub is None:
@@ -79,7 +79,7 @@ class ScholarlyProvider(Provider):
             logger.error("Could not fetch references for '%s': %s", work.title, exc)
             return []
 
-        refs: list[WorkRef] = []
+        refs: list[BibliographicWork] = []
         for ref in filled.get("references", []):
             bib = ref.get("bib", {})
             work_ref = _to_work_ref(bib)
@@ -87,13 +87,13 @@ class ScholarlyProvider(Provider):
                 refs.append(work_ref)
         return refs
 
-    def fetch_citations(self, work: Work) -> list[WorkRef]:
+    def fetch_citations(self, work: Work) -> list[BibliographicWork]:
         s = self._scholarly()
         pub = self._find_pub(work)
         if pub is None:
             return []
 
-        refs: list[WorkRef] = []
+        refs: list[BibliographicWork] = []
         time.sleep(_REQUEST_DELAY)
         try:
             for citing in s.citedby(pub):

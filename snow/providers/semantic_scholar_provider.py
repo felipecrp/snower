@@ -24,7 +24,7 @@ import time
 
 import httpx
 
-from snow.domain.identity import WorkRef
+from snow.domain.identity import BibliographicWork
 from snow.domain.models import Work
 from .base import Provider
 
@@ -102,16 +102,16 @@ class SemanticScholarProvider(Provider):
             return None
         return papers[0]["paperId"]
 
-    def _to_work_ref(self, paper: dict) -> WorkRef | None:
+    def _to_work_ref(self, paper: dict) -> BibliographicWork | None:
         title = paper.get("title")
         if not title:
             return None
         year = paper.get("year")
         authors = tuple(a["name"] for a in paper.get("authors") or [])
         doi = (paper.get("externalIds") or {}).get("DOI")
-        return WorkRef(title=title, year=year, authors=authors, doi=doi)
+        return BibliographicWork(title=title, year=year, authors=authors, doi=doi)
 
-    def _fetch_related(self, work: Work, endpoint: str, paper_key: str) -> list[WorkRef]:
+    def _fetch_related(self, work: Work, endpoint: str, paper_key: str) -> list[BibliographicWork]:
         paper_id = self._paper_id(work)
         if not paper_id:
             return []
@@ -120,7 +120,7 @@ class SemanticScholarProvider(Provider):
         if data is None:
             return []
 
-        refs: list[WorkRef] = []
+        refs: list[BibliographicWork] = []
         for item in data.get("data") or []:
             ref = self._to_work_ref(item.get(paper_key) or {})
             if ref:
@@ -133,8 +133,8 @@ class SemanticScholarProvider(Provider):
             )
         return refs
 
-    def fetch_references(self, work: Work) -> list[WorkRef]:
+    def fetch_references(self, work: Work) -> list[BibliographicWork]:
         return self._fetch_related(work, "references", "citedPaper")
 
-    def fetch_citations(self, work: Work) -> list[WorkRef]:
+    def fetch_citations(self, work: Work) -> list[BibliographicWork]:
         return self._fetch_related(work, "citations", "citingPaper")

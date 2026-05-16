@@ -31,12 +31,12 @@ class DescribeBibLoad:
         works = bib.load(path)
         assert len(works) == 2
 
-    def it_assigns_work_id_from_doi_when_available(self, tmp_path: Path):
+    def it_assigns_work_id_from_metadata_when_doi_is_available(self, tmp_path: Path):
         path = tmp_path / "in.bib"
         path.write_text(SAMPLE_BIB)
         works = bib.load(path)
         wohlin = next(w for w in works if w.bib_key == "wohlin2014")
-        assert wohlin.id == "doi:10.1145/2601248.2601268"
+        assert wohlin.id == "sha1:e9801894fc58bb6e"
 
     def it_falls_back_to_hash_when_no_doi(self, tmp_path: Path):
         path = tmp_path / "in.bib"
@@ -58,6 +58,14 @@ class DescribeBibLoad:
         works = bib.load(path)
         wohlin = next(w for w in works if w.bib_key == "wohlin2014")
         assert wohlin.venue == "EASE"
+
+    def it_parses_pdf_url(self, tmp_path: Path):
+        path = tmp_path / "in.bib"
+        path.write_text(
+            "@article{x, title = {X}, year = {2020}, pdf_url = {https://example.com/x.pdf}}\n"
+        )
+        works = bib.load(path)
+        assert works[0].pdf_url == "https://example.com/x.pdf"
 
 
 class DescribeBibLatexDecoding:
@@ -110,6 +118,7 @@ class DescribeBibDump:
             assert w.authors == o.authors
             assert w.year == o.year
             assert w.doi == o.doi
+            assert w.pdf_url == o.pdf_url
 
     def it_emits_entries_sorted_by_key(self, tmp_path: Path):
         works = [
@@ -120,3 +129,12 @@ class DescribeBibDump:
         bib.dump(works, out)
         text = out.read_text()
         assert text.index("alpha2020") < text.index("zeta2020")
+
+    def it_dumps_pdf_url(self, tmp_path: Path):
+        works = [
+            Work(id="x", bib_key="x2020", title="X", authors=["X, X"], pdf_url="https://example.com/x.pdf"),
+        ]
+        out = tmp_path / "out.bib"
+        bib.dump(works, out)
+        text = out.read_text()
+        assert "pdf_url = {https://example.com/x.pdf}" in text

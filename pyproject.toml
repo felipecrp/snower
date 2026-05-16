@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.136.1",
     "httpx>=0.28.1",
     "pydantic>=2.13.4",
+    "python-multipart>=0.0.28",
     "ruamel-yaml>=0.19.1",
     "scholarly>=1.7.11",
     "typer>=0.25.1",

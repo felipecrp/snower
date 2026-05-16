@@ -48,14 +48,15 @@ class DescribeNormalizeAuthorSurname:
 
 
 class DescribeWorkId:
-    def it_uses_doi_when_available(self):
+    def it_ignores_doi_when_available(self):
         ref = WorkRef(doi="10.1145/X", title="Whatever", authors=("Someone",), year=2020)
-        assert work_id(ref) == "doi:10.1145/x"
+        without_doi = WorkRef(title="Whatever", authors=("Someone",), year=2020)
+        assert work_id(ref) == work_id(without_doi)
 
-    def it_prefers_doi_over_metadata(self):
+    def it_uses_metadata_even_when_doi_exists(self):
         with_doi = WorkRef(doi="10.1/A", title="T", authors=("A",), year=2020)
         only_meta = WorkRef(title="T", authors=("A",), year=2020)
-        assert work_id(with_doi) != work_id(only_meta)
+        assert work_id(with_doi) == work_id(only_meta)
 
     class DescribeWithoutDoi:
         def it_is_stable_across_capitalization(self):

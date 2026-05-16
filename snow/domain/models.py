@@ -6,16 +6,20 @@ They are designed to round-trip cleanly to .bib + .yml files on disk.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
 
 class SetKind(StrEnum):
     START = "start"
     BACKWARD = "backward"
     FORWARD = "forward"
+    ORPHAN = "orphan"
 
 
 class CriterionKind(StrEnum):
@@ -33,11 +37,27 @@ class Researcher(BaseModel):
     name: str
     email: str | None = None
 
+    @field_validator("id", mode="before")
+    @classmethod
+    def normalize_id(cls, v: str) -> str:
+        normalized = v.lower().strip()
+        if not _ID_RE.match(normalized):
+            raise ValueError(f"Researcher id must contain only letters, digits, or underscores (got {v!r})")
+        return normalized
+
 
 class Criterion(BaseModel):
     id: str
     kind: CriterionKind
     description: str
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def normalize_id(cls, v: str) -> str:
+        normalized = v.lower().strip()
+        if not _ID_RE.match(normalized):
+            raise ValueError(f"Criterion id must contain only letters, digits, or underscores (got {v!r})")
+        return normalized
 
 
 class ProviderConfig(BaseModel):
@@ -65,6 +85,7 @@ class Work(BaseModel):
     venue: str | None = None
     doi: str | None = None
     url: str | None = None
+    pdf_url: str | None = None
     abstract: str | None = None
     extra: dict[str, str] = Field(default_factory=dict)
     last_backward_snowballed_at: datetime | None = None

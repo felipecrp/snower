@@ -1,0 +1,56 @@
+<div class="page">
+  <div class="page-header">
+    <h2>Start Set</h2>
+    <div class="header-actions">
+      <input
+        id="bib-file-input"
+        type="file"
+        accept=".bib"
+        class="hidden-input"
+        (change)="onFileSelected($event)"
+      />
+      <button class="primary" (click)="triggerFileInput()" [disabled]="importing()">
+        {{ importing() ? 'Importing…' : 'Import .bib' }}
+      </button>
+    </div>
+  </div>
+
+  <div class="error" *ngIf="error() as err">{{ err }}</div>
+
+  <div class="stats" *ngIf="startSet() as s">
+    <span class="stat"><strong>{{ works().length }}</strong> papers</span>
+  </div>
+
+  <div class="works-list" *ngIf="works().length; else empty">
+    <table>
+      <thead>
+        <tr>
+          <th>Key</th>
+          <th>Title</th>
+          <th>Authors</th>
+          <th>Year</th>
+          <th>Venue</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let w of works(); trackBy: trackById">
+          <td class="bib-key">{{ w.bib_key }}</td>
+          <td class="title">
+            {{ w.title }}
+            <a *ngIf="w.doi" [href]="'https://doi.org/' + w.doi" target="_blank" class="doi-link">↗</a>
+          </td>
+          <td class="authors">{{ w.authors.slice(0, 3).join('; ') }}{{ w.authors.length > 3 ? ' …' : '' }}</td>
+          <td class="year">{{ w.year }}</td>
+          <td class="venue">{{ w.venue }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ng-template #empty>
+    <div class="empty">
+      <p>No papers in the start set yet.</p>
+      <p>Import a <code>.bib</code> file or use the CLI: <code>snow import-bib &lt;file.bib&gt;</code></p>
+    </div>
+  </ng-template>
+</div>

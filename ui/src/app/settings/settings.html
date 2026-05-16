@@ -1,14 +1,40 @@
-<header class="topbar">
-  <div class="brand">
-    <a routerLink="/"><strong>Snow</strong></a>
-    <span class="crumb">— Settings</span>
-  </div>
-  <a routerLink="/" class="back">← back to triage</a>
-</header>
-
 <main>
   <div class="error" *ngIf="error() as err">{{ err }}</div>
   <div class="saved" *ngIf="saved() as msg">{{ msg }}</div>
+
+  <section>
+    <div class="section-header">
+      <h2>Project</h2>
+      <div class="workspace-actions">
+        <button (click)="openDialog('open')">Open…</button>
+        <button (click)="openDialog('new')">New…</button>
+      </div>
+    </div>
+
+    <div class="field-row" *ngIf="workspace() as w">
+      <label>Path</label>
+      <span class="path-display">{{ w.path }}</span>
+    </div>
+
+    <div class="field-row">
+      <label for="proj-name">Name</label>
+      <input id="proj-name" type="text" [ngModel]="projectName()" (ngModelChange)="projectName.set($event)" placeholder="My Review" />
+    </div>
+
+    <div class="field-row">
+      <label for="proj-desc">Description</label>
+      <input id="proj-desc" type="text" [ngModel]="projectDescription()" (ngModelChange)="projectDescription.set($event)" placeholder="Optional description" />
+    </div>
+
+    <div class="field-row">
+      <label for="openalex-email">OpenAlex email</label>
+      <input id="openalex-email" type="email" [ngModel]="openAlexEmail()" (ngModelChange)="openAlexEmail.set($event)" placeholder="you@example.com (polite pool)" />
+    </div>
+
+    <div class="actions">
+      <button class="primary" (click)="saveProjectInfo()">Save project info</button>
+    </div>
+  </section>
 
   <section>
     <h2>Researchers</h2>
@@ -72,3 +98,36 @@
     </div>
   </section>
 </main>
+
+<!-- New / Open dialog -->
+<div class="dialog-backdrop" *ngIf="dialog() as kind" (click)="closeDialog()">
+  <section class="workspace-dialog" (click)="$event.stopPropagation()">
+    <header>
+      <strong>{{ kind === 'new' ? 'New Project' : 'Open Project' }}</strong>
+      <button type="button" (click)="closeDialog()">✕</button>
+    </header>
+
+    <label>
+      Path
+      <input type="text" [ngModel]="dialogPath()" (ngModelChange)="dialogPath.set($event)" placeholder="/home/user/my-review" autofocus />
+    </label>
+
+    <ng-container *ngIf="kind === 'new'">
+      <label>
+        Name
+        <input type="text" [ngModel]="dialogName()" (ngModelChange)="dialogName.set($event)" placeholder="My Systematic Review" />
+      </label>
+      <label>
+        Description <span class="optional">(optional)</span>
+        <input type="text" [ngModel]="dialogDescription()" (ngModelChange)="dialogDescription.set($event)" placeholder="Short description" />
+      </label>
+    </ng-container>
+
+    <div class="dialog-actions">
+      <button (click)="closeDialog()" [disabled]="dialogWorking()">Cancel</button>
+      <button class="primary" (click)="confirmDialog()" [disabled]="dialogWorking()">
+        {{ dialogWorking() ? 'Working…' : (kind === 'new' ? 'Create' : 'Open') }}
+      </button>
+    </div>
+  </section>
+</div>

@@ -78,6 +78,18 @@ BibTeX keys follow `<surname><year><letter>` (e.g. `wohlin2014a`). The global re
 - `POST /api/snowballing/{backward|forward}` is the global trigger.
 - It skips papers already logged in `snowballing.yml` for that direction.
 - Provider: `ScholarlyProvider` (Google Scholar scraping — CAPTCHA risk on large batches).
+- OpenAlex and Semantic Scholar providers also available.
+
+## Orphan Sets
+
+When a consensus-accepted paper that was already snowballed gets rejected, its "children" in backward/forward sets may lose their connection to the review corpus:
+
+- A **backward** set paper is orphaned when no consensus-accepted paper cites it (verified via `relations.yml`).
+- A **forward** set paper is orphaned when it cites no consensus-accepted paper.
+- Orphaned papers move to the `orphan` set (kind `"orphan"`, directory `sets/orphan/`).
+- Papers carry `_snow_origin` (original set ID) and `_snow_direction` (`"backward"`/`"forward"`) in their BibTeX `extra` fields.
+- Orphans are **returned** to their origin set automatically when they regain a connection (e.g., when a paper that cites them is accepted again).
+- `recalculate_orphans()` is called by `decisions.py` after every upsert or delete.
 
 ## Multi-researcher
 

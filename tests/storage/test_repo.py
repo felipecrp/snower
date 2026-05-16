@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from snow.domain.identity import WorkRef
+from snow.domain.identity import BibliographicWork
 from snow.domain.models import (
     Criterion,
     CriterionKind,
@@ -41,8 +41,17 @@ def _decision(work_id, researcher_id, verdict):
     )
 
 
-def _ref(title, doi=None):
-    return WorkRef(title=title, year=2020, authors=("Doe, J",), doi=doi)
+def _ref(title, doi=None, venue=None, url=None, pdf_url=None, abstract=None):
+    return BibliographicWork(
+        title=title,
+        year=2020,
+        authors=("Doe, J",),
+        doi=doi,
+        venue=venue,
+        url=url,
+        pdf_url=pdf_url,
+        abstract=abstract,
+    )
 
 
 @pytest.fixture
@@ -58,8 +67,8 @@ def project() -> Project:
 @pytest.fixture
 def sample_works() -> list[Work]:
     return [
-        Work(id="doi:10/a", bib_key="a2020", title="A", authors=["A, A"], year=2020, doi="10/a"),
-        Work(id="doi:10/b", bib_key="b2021", title="B", authors=["B, B"], year=2021, doi="10/b"),
+        Work(id="sha1:7775895baced66ce", bib_key="a2020", title="A", authors=["A, A"], year=2020, doi="10/a"),
+        Work(id="sha1:cdc005a8929a82bf", bib_key="b2021", title="B", authors=["B, B"], year=2021, doi="10/b"),
     ]
 
 
@@ -105,7 +114,53 @@ class DescribeProjectRepoSets:
         loaded = repo.load_set("00-start")
         assert loaded.iteration == 0
         assert loaded.kind == SetKind.START
-        assert {w.id for w in loaded.works} == {"doi:10/a", "doi:10/b"}
+        assert {w.id for w in loaded.works} == {"sha1:7775895baced66ce", "sha1:cdc005a8929a82bf"}
+
+    def it_recomputes_ids_after_import_enrichment(self, tmp_path: Path, project: Project):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        work = Work(id="sha1:old", bib_key="a2020", title="A", authors=["A, A"], year=2020, doi="10/a")
+
+        repo.import_start_set([work])
+
+        loaded = repo.load_set("00-start")
+        assert loaded.works[0].id == "sha1:7775895baced66ce"
+
+    def it_merges_reimported_enriched_metadata_without_duplicating(
+        self, tmp_path: Path, project: Project
+    ):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        original = Work(
+            id="sha1:15bd402faa106b69",
+            bib_key="a2020",
+            title="A",
+            authors=["A, A"],
+            year=2020,
+        )
+        repo.import_start_set([original])
+        original_id = repo.load_set("00-start").works[0].id
+        repo.save_decisions("00-start", [_decision(original_id, "r1", Verdict.ACCEPT)])
+        enriched = Work(
+            id=original_id,
+            bib_key="a2020",
+            title="A",
+            authors=["A, A"],
+            year=2020,
+            doi="10/a",
+            url="https://example.com/a",
+            abstract="Abstract from OpenAlex",
+        )
+
+        updated = repo.import_bib_to_set("00-start", [enriched])
+
+        assert len(updated.works) == 1
+        assert updated.works[0].id == "sha1:7775895baced66ce"
+        assert updated.works[0].doi == "10/a"
+        assert updated.works[0].url == "https://example.com/a"
+        assert updated.works[0].abstract == "Abstract from OpenAlex"
+        decisions, _ = repo.load_decisions("00-start")
+        assert decisions[0].work_id == "sha1:7775895baced66ce"
 
     def it_starts_snowballing_set(self, tmp_path: Path, project: Project, sample_works: list[Work]):
         repo = ProjectRepo(tmp_path / "proj")
@@ -133,7 +188,7 @@ class DescribeProjectRepoDecisions:
         repo.save_set(repo.import_start_set([]))
         decisions = [
             Decision(
-                work_id="doi:10/a",
+                work_id="sha1:7775895baced66ce",
                 researcher_id="r1",
                 verdict=Verdict.ACCEPT,
                 criterion_id="c1",
@@ -142,7 +197,7 @@ class DescribeProjectRepoDecisions:
         ]
         resolutions = [
             Resolution(
-                work_id="doi:10/a",
+                work_id="sha1:7775895baced66ce",
                 verdict=Verdict.ACCEPT,
                 by="vote",
                 resolved_at=datetime(2026, 5, 16, 9, 0, 0),
@@ -167,7 +222,7 @@ class DescribeProjectRepoKeyMinting:
         repo.init(project)
         works = [
             Work(
-                id="doi:10/wohlin",
+                id="sha1:7a611379c566500f",
                 bib_key="garbageId123",
                 title="Snowballing",
                 authors=["Wohlin, Claus"],
@@ -177,7 +232,7 @@ class DescribeProjectRepoKeyMinting:
         ]
         start = repo.import_start_set(works)
         assert start.works[0].bib_key == "wohlin2014a"
-        assert repo.load_keys() == {"wohlin2014a": "doi:10/wohlin"}
+        assert repo.load_keys() == {"wohlin2014a": "sha1:7a611379c566500f"}
 
     def it_disambiguates_with_letters_for_same_author_year(
         self, tmp_path: Path, project: Project
@@ -185,9 +240,9 @@ class DescribeProjectRepoKeyMinting:
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)
         works = [
-            Work(id="doi:10/a", bib_key="x", title="T1", authors=["Wohlin, Claus"], year=2014, doi="10/a"),
-            Work(id="doi:10/b", bib_key="y", title="T2", authors=["Wohlin, Claus"], year=2014, doi="10/b"),
-            Work(id="doi:10/c", bib_key="z", title="T3", authors=["Wohlin, Claus"], year=2014, doi="10/c"),
+            Work(id="sha1:23440077d4c90157", bib_key="x", title="T1", authors=["Wohlin, Claus"], year=2014, doi="10/a"),
+            Work(id="sha1:a30b2382d7a2ea0f", bib_key="y", title="T2", authors=["Wohlin, Claus"], year=2014, doi="10/b"),
+            Work(id="sha1:65b4f475f6256261", bib_key="z", title="T3", authors=["Wohlin, Claus"], year=2014, doi="10/c"),
         ]
         start = repo.import_start_set(works)
         assert [w.bib_key for w in start.works] == ["wohlin2014a", "wohlin2014b", "wohlin2014c"]
@@ -201,15 +256,15 @@ class DescribeProjectRepoKeyMinting:
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)
         repo.import_start_set(
-            [Work(id="doi:10/a", bib_key="x", title="T", authors=["Wohlin, Claus"], year=2014, doi="10/a")]
+            [Work(id="sha1:1b7d6438c9db5159", bib_key="x", title="T", authors=["Wohlin, Claus"], year=2014, doi="10/a")]
         )
         new_set = ReviewSet(
             id="01-backward",
             kind=Kind.BACKWARD,
             iteration=1,
             works=[
-                Work(id="doi:10/a", bib_key="reimported", title="T", authors=["Wohlin"], year=2014, doi="10/a"),
-                Work(id="doi:10/b", bib_key="other", title="U", authors=["Wohlin, Claus"], year=2014, doi="10/b"),
+                Work(id="sha1:1b7d6438c9db5159", bib_key="reimported", title="T", authors=["Wohlin"], year=2014, doi="10/a"),
+                Work(id="sha1:fbb4c753aeb8d236", bib_key="other", title="U", authors=["Wohlin, Claus"], year=2014, doi="10/b"),
             ],
         )
         repo.save_set(new_set)
@@ -221,8 +276,8 @@ class DescribeProjectRepoKeyMinting:
         repo.init(project)
         repo.import_start_set(
             [
-                Work(id="doi:10/z", bib_key="zz", title="Z", authors=["Zeta, Z"], year=2020, doi="10/z"),
-                Work(id="doi:10/a", bib_key="aa", title="A", authors=["Alpha, A"], year=2020, doi="10/a"),
+                Work(id="sha1:1f3edef7e27228c2", bib_key="zz", title="Z", authors=["Zeta, Z"], year=2020, doi="10/z"),
+                Work(id="sha1:7775895baced66ce", bib_key="aa", title="A", authors=["Alpha, A"], year=2020, doi="10/a"),
             ]
         )
         text = (tmp_path / "proj" / "keys.yml").read_text()
@@ -233,7 +288,7 @@ class DescribeProjectRepoRelations:
     def it_round_trips_relations(self, tmp_path: Path, project: Project):
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)
-        rels = [Relation(citing_work_id="doi:10/a", cited_work_id="doi:10/b")]
+        rels = [Relation(citing_bib_key="wohlin2014a", cited_bib_key="wohlin2014b")]
         repo.save_relations(rels)
         assert repo.load_relations() == rels
 
@@ -250,8 +305,8 @@ class DescribeRunGlobalSnowballing:
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)
         repo.import_start_set(sample_works)
-        repo.save_decisions("00-start", [_decision("doi:10/a", "r1", Verdict.ACCEPT)])
-        provider = FakeProvider(refs={"doi:10/a": [_ref("Ref Paper", doi="10/ref")]})
+        repo.save_decisions("00-start", [_decision("sha1:7775895baced66ce", "r1", Verdict.ACCEPT)])
+        provider = FakeProvider(refs={"sha1:7775895baced66ce": [_ref("Ref Paper", doi="10/ref")]})
 
         updated = repo.run_global_snowballing(SetKind.BACKWARD, provider)
 
@@ -261,14 +316,43 @@ class DescribeRunGlobalSnowballing:
         assert len(updated[0].works) == 1
         assert updated[0].works[0].title == "Ref Paper"
 
+    def it_populates_metadata_from_provider_refs(
+        self, tmp_path: Path, project: Project, sample_works: list[Work]
+    ):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        repo.import_start_set(sample_works)
+        repo.save_decisions("00-start", [_decision("sha1:7775895baced66ce", "r1", Verdict.ACCEPT)])
+        provider = FakeProvider(refs={
+            "sha1:7775895baced66ce": [
+                _ref(
+                    "Ref Paper",
+                    doi="10/ref",
+                    venue="Journal of Examples",
+                    url="https://example.com/ref",
+                    pdf_url="https://example.com/ref.pdf",
+                    abstract="Provider abstract",
+                ),
+            ],
+        })
+
+        updated = repo.run_global_snowballing(SetKind.BACKWARD, provider)
+
+        work = updated[0].works[0]
+        assert work.doi == "10/ref"
+        assert work.venue == "Journal of Examples"
+        assert work.url == "https://example.com/ref"
+        assert work.pdf_url == "https://example.com/ref.pdf"
+        assert work.abstract == "Provider abstract"
+
     def it_creates_forward_set_from_accepted_start_papers(
         self, tmp_path: Path, project: Project, sample_works: list[Work]
     ):
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)
         repo.import_start_set(sample_works)
-        repo.save_decisions("00-start", [_decision("doi:10/a", "r1", Verdict.ACCEPT)])
-        provider = FakeProvider(cites={"doi:10/a": [_ref("Citing Paper", doi="10/cite")]})
+        repo.save_decisions("00-start", [_decision("sha1:7775895baced66ce", "r1", Verdict.ACCEPT)])
+        provider = FakeProvider(cites={"sha1:7775895baced66ce": [_ref("Citing Paper", doi="10/cite")]})
 
         updated = repo.run_global_snowballing(SetKind.FORWARD, provider)
 
@@ -283,10 +367,10 @@ class DescribeRunGlobalSnowballing:
         repo.import_start_set(sample_works)
         # Tie (1 accept, 1 reject) → not accepted
         repo.save_decisions("00-start", [
-            _decision("doi:10/a", "r1", Verdict.ACCEPT),
-            _decision("doi:10/a", "r2", Verdict.REJECT),
+            _decision("sha1:7775895baced66ce", "r1", Verdict.ACCEPT),
+            _decision("sha1:7775895baced66ce", "r2", Verdict.REJECT),
         ])
-        provider = FakeProvider(refs={"doi:10/a": [_ref("Should Not Appear")]})
+        provider = FakeProvider(refs={"sha1:7775895baced66ce": [_ref("Should Not Appear")]})
 
         updated = repo.run_global_snowballing(SetKind.BACKWARD, provider)
 
@@ -298,7 +382,7 @@ class DescribeRunGlobalSnowballing:
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)
         repo.import_start_set(sample_works)
-        provider = FakeProvider(refs={"doi:10/a": [_ref("Should Not Appear")]})
+        provider = FakeProvider(refs={"sha1:7775895baced66ce": [_ref("Should Not Appear")]})
 
         updated = repo.run_global_snowballing(SetKind.BACKWARD, provider)
 
@@ -311,16 +395,16 @@ class DescribeRunGlobalSnowballing:
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)
 
-        paper_bwd = Work(id="doi:10/bwd", bib_key="", title="BWD", authors=["A, A"], year=2020, doi="10/bwd")
-        paper_fwd = Work(id="doi:10/fwd", bib_key="", title="FWD", authors=["B, B"], year=2021, doi="10/fwd")
+        paper_bwd = Work(id="sha1:fa1bf5c7d1fe99e7", bib_key="", title="BWD", authors=["A, A"], year=2020, doi="10/bwd")
+        paper_fwd = Work(id="sha1:5ca6c7f2333cc463", bib_key="", title="FWD", authors=["B, B"], year=2021, doi="10/fwd")
         repo.save_set(ReviewSet(id="01-backward", kind=SetKind.BACKWARD, iteration=1, works=[paper_bwd]))
         repo.save_set(ReviewSet(id="01-forward", kind=SetKind.FORWARD, iteration=1, works=[paper_fwd]))
-        repo.save_decisions("01-backward", [_decision("doi:10/bwd", "r1", Verdict.ACCEPT)])
-        repo.save_decisions("01-forward", [_decision("doi:10/fwd", "r1", Verdict.ACCEPT)])
+        repo.save_decisions("01-backward", [_decision("sha1:fa1bf5c7d1fe99e7", "r1", Verdict.ACCEPT)])
+        repo.save_decisions("01-forward", [_decision("sha1:5ca6c7f2333cc463", "r1", Verdict.ACCEPT)])
 
         provider = FakeProvider(refs={
-            "doi:10/bwd": [_ref("Ref from BWD", doi="10/rbwd")],
-            "doi:10/fwd": [_ref("Ref from FWD", doi="10/rfwd")],
+            "sha1:fa1bf5c7d1fe99e7": [_ref("Ref from BWD", doi="10/rbwd")],
+            "sha1:5ca6c7f2333cc463": [_ref("Ref from FWD", doi="10/rfwd")],
         })
 
         updated = repo.run_global_snowballing(SetKind.BACKWARD, provider)
@@ -336,8 +420,8 @@ class DescribeRunGlobalSnowballing:
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)
         repo.import_start_set(sample_works)
-        repo.save_decisions("00-start", [_decision("doi:10/a", "r1", Verdict.ACCEPT)])
-        provider = FakeProvider(refs={"doi:10/a": [_ref("Ref", doi="10/ref")]})
+        repo.save_decisions("00-start", [_decision("sha1:7775895baced66ce", "r1", Verdict.ACCEPT)])
+        provider = FakeProvider(refs={"sha1:7775895baced66ce": [_ref("Ref", doi="10/ref")]})
 
         repo.run_global_snowballing(SetKind.BACKWARD, provider)
         updated2 = repo.run_global_snowballing(SetKind.BACKWARD, provider)
@@ -351,11 +435,11 @@ class DescribeRunGlobalSnowballing:
         repo.init(project)
         repo.import_start_set(sample_works)
         repo.save_decisions("00-start", [
-            _decision("doi:10/a", "r1", Verdict.ACCEPT),
-            _decision("doi:10/b", "r1", Verdict.ACCEPT),
+            _decision("sha1:7775895baced66ce", "r1", Verdict.ACCEPT),
+            _decision("sha1:cdc005a8929a82bf", "r1", Verdict.ACCEPT),
         ])
         shared_ref = _ref("Shared Ref", doi="10/shared")
-        provider = FakeProvider(refs={"doi:10/a": [shared_ref], "doi:10/b": [shared_ref]})
+        provider = FakeProvider(refs={"sha1:7775895baced66ce": [shared_ref], "sha1:cdc005a8929a82bf": [shared_ref]})
 
         updated = repo.run_global_snowballing(SetKind.BACKWARD, provider)
 

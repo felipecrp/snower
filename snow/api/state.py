@@ -20,6 +20,9 @@ class ApiState:
         if not self.repo.project_path().exists():
             raise FileNotFoundError(f"No snow project at {project_root}")
 
+    def switch(self, new_root: Path) -> None:
+        self.repo = ProjectRepo(new_root)
+
 
 def get_state(request: Request) -> ApiState:
     state: ApiState | None = request.app.state.snow

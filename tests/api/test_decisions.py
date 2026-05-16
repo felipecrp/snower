@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 class DescribeUpsertDecision:
     def it_creates_a_decision(self, client: TestClient, alice_headers: dict[str, str]):
         r = client.put(
-            "/api/sets/00-start/decisions/doi:10/a",
+            "/api/sets/00-start/decisions/sha1:7775895baced66ce",
             json={"verdict": "accept", "criterion_id": "inc1", "note": "looks empirical"},
             headers=alice_headers,
         )
@@ -12,18 +12,18 @@ class DescribeUpsertDecision:
         body = r.json()
         assert body["verdict"] == "accept"
         assert body["researcher_id"] == "alice"
-        assert body["work_id"] == "doi:10/a"
+        assert body["work_id"] == "sha1:7775895baced66ce"
 
     def it_replaces_previous_decision_by_same_researcher(
         self, client: TestClient, alice_headers: dict[str, str]
     ):
         client.put(
-            "/api/sets/00-start/decisions/doi:10/a",
+            "/api/sets/00-start/decisions/sha1:7775895baced66ce",
             json={"verdict": "accept", "criterion_id": "inc1"},
             headers=alice_headers,
         )
         client.put(
-            "/api/sets/00-start/decisions/doi:10/a",
+            "/api/sets/00-start/decisions/sha1:7775895baced66ce",
             json={"verdict": "reject", "criterion_id": "exc1"},
             headers=alice_headers,
         )
@@ -35,12 +35,12 @@ class DescribeUpsertDecision:
 
     def it_keeps_decisions_from_other_researchers(self, client: TestClient):
         client.put(
-            "/api/sets/00-start/decisions/doi:10/a",
+            "/api/sets/00-start/decisions/sha1:7775895baced66ce",
             json={"verdict": "accept"},
             headers={"X-Researcher-Id": "alice"},
         )
         client.put(
-            "/api/sets/00-start/decisions/doi:10/a",
+            "/api/sets/00-start/decisions/sha1:7775895baced66ce",
             json={"verdict": "reject"},
             headers={"X-Researcher-Id": "bob"},
         )
@@ -50,14 +50,14 @@ class DescribeUpsertDecision:
 
     def it_rejects_missing_researcher_header(self, client: TestClient):
         r = client.put(
-            "/api/sets/00-start/decisions/doi:10/a",
+            "/api/sets/00-start/decisions/sha1:7775895baced66ce",
             json={"verdict": "accept"},
         )
         assert r.status_code == 401
 
     def it_rejects_unknown_researcher(self, client: TestClient):
         r = client.put(
-            "/api/sets/00-start/decisions/doi:10/a",
+            "/api/sets/00-start/decisions/sha1:7775895baced66ce",
             json={"verdict": "accept"},
             headers={"X-Researcher-Id": "ghost"},
         )
@@ -65,7 +65,7 @@ class DescribeUpsertDecision:
 
     def it_returns_404_for_unknown_set(self, client: TestClient, alice_headers: dict[str, str]):
         r = client.put(
-            "/api/sets/99-forward/decisions/doi:10/a",
+            "/api/sets/99-forward/decisions/sha1:7775895baced66ce",
             json={"verdict": "accept"},
             headers=alice_headers,
         )
@@ -77,16 +77,16 @@ class DescribeDeleteDecision:
         self, client: TestClient, alice_headers: dict[str, str]
     ):
         client.put(
-            "/api/sets/00-start/decisions/doi:10/a",
+            "/api/sets/00-start/decisions/sha1:7775895baced66ce",
             json={"verdict": "accept"},
             headers=alice_headers,
         )
         client.put(
-            "/api/sets/00-start/decisions/doi:10/a",
+            "/api/sets/00-start/decisions/sha1:7775895baced66ce",
             json={"verdict": "reject"},
             headers={"X-Researcher-Id": "bob"},
         )
-        r = client.delete("/api/sets/00-start/decisions/doi:10/a", headers=alice_headers)
+        r = client.delete("/api/sets/00-start/decisions/sha1:7775895baced66ce", headers=alice_headers)
         assert r.status_code == 204
 
         body = client.get("/api/sets/00-start/decisions").json()

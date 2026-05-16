@@ -1,19 +1,16 @@
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, computed, inject, signal } from '@angular/core';
+import { Component, HostListener, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
-import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
-import { faGear } from '@fortawesome/free-solid-svg-icons';
 
 import { ApiService } from '../api.service';
 import {
   Criterion,
   Decision,
   DecisionInput,
-  Project,
   ReviewSet,
   Work,
 } from '../models';
+import { ProjectService } from '../project.service';
 import { ResearcherService } from '../researcher.service';
 
 type SortField = 'author' | 'title' | 'venue' | 'criterion';
@@ -22,29 +19,32 @@ type VisibilityMode = 'pending' | 'selected' | 'rejected' | 'all' | 'custom';
 type TriageCounts = { selected: number; rejected: number; total: number; shown: number };
 
 const SORT_FIELDS: SortField[] = ['author', 'title', 'venue', 'criterion'];
-const VISIBILITY_MODES: VisibilityMode[] = ['pending', 'selected', 'rejected', 'all'];
 
 @Component({
-  selector: 'app-triage',
+  selector: 'app-analysis',
   standalone: true,
-  imports: [CommonModule, FontAwesomeModule, FormsModule, RouterLink],
-  templateUrl: './triage.html',
-  styleUrl: './triage.scss',
+  imports: [CommonModule, FormsModule],
+  templateUrl: './analysis.html',
+  styleUrl: './analysis.scss',
 })
-export class TriageComponent {
+export class AnalysisComponent {
   private readonly api = inject(ApiService);
+  readonly projectSvc = inject(ProjectService);
   private readonly researcherSvc = inject(ResearcherService);
 
-  readonly project = signal<Project | null>(null);
-  readonly sets = signal<ReviewSet[]>([]);
+  readonly project = this.projectSvc.project;
+  readonly sets = this.projectSvc.sets;
   readonly currentSet = signal<ReviewSet | null>(null);
   readonly decisions = signal<Decision[]>([]);
-  readonly allDecisions = signal<Record<string, Decision[]>>({});
   readonly draft = signal<Record<string, DecisionInput>>({});
   readonly activeResearcherId = this.researcherSvc.activeId;
   readonly error = signal<string | null>(null);
+  readonly importing = signal(false);
+  readonly snowballRunning = signal(false);
+  readonly snowballMenuOpen = signal(false);
 
   readonly resultsMode = signal(false);
+  readonly showPending = signal(true);
   readonly showSelected = signal(true);
   readonly showRejected = signal(false);
   readonly sortField = signal<SortField>('author');
@@ -55,33 +55,24 @@ export class TriageComponent {
   readonly criterionNote = signal('');
   readonly highlightedCriterionIndex = signal(0);
   readonly lastCriterionByVerdict = signal<Partial<Record<'accept' | 'reject', string>>>({});
-  readonly settingsIcon = faGear;
-  readonly selectValue = computed(() => (this.resultsMode() ? '__results__' : this.activeResearcherId()));
+  readonly expandedWorkIds = signal<Record<string, boolean>>({});
+
+  private pendingKeys = '';
 
   readonly filteredWorks = computed(() => {
     const set = this.currentSet();
     if (!set) return [];
-    if (this.resultsMode()) {
-      const showSel = this.showSelected();
-      const showRej = this.showRejected();
-      return this.sortWorks(
-        set.works.filter((w) => {
-          const verdict = this.consensusFor(w.id);
-          if (!verdict) return false;
-          if (verdict === 'accept') return showSel;
-          return showRej;
-        }),
-      );
-    }
+    const showPend = this.showPending();
     const showSel = this.showSelected();
     const showRej = this.showRejected();
-    const works = set.works.filter((w) => {
-      const verdict = this.decisionFor(w.id)?.verdict;
-      if (!verdict) return true;
-      if (verdict === 'accept') return showSel;
-      return showRej;
-    });
-    return this.sortWorks(works);
+    return this.sortWorks(
+      set.works.filter((w) => {
+        const verdict = this.decisionFor(w.id)?.verdict;
+        if (!verdict) return showPend;
+        if (verdict === 'accept') return showSel;
+        return showRej;
+      }),
+    );
   });
 
   readonly includeCriteria = computed(
@@ -128,59 +119,110 @@ export class TriageComponent {
       .map((match) => match.criterion);
   });
 
-  constructor() {
-    this.refresh();
-  }
+  readonly regularSets = computed(() => this.sets().filter((s) => s.kind !== 'orphan'));
+  readonly orphanSet = computed(() => this.sets().find((s) => s.kind === 'orphan') ?? null);
 
-  refresh(): void {
-    this.api.getProject().subscribe({
-      next: (p) => {
-        this.project.set(p);
-        document.title = `Snow - ${p.name}`;
-        const activeId = this.activeResearcherId();
-        if (activeId && !p.researchers.some((r) => r.id === activeId)) {
-          this.setResearcher(null);
-        }
-      },
-      error: (e) => this.error.set(`Failed to load project: ${e.message}`),
+  private static readonly LAST_SET_KEY = 'snow:last-set';
+  private setAutoSelected = false;
+
+  constructor() {
+    effect(() => {
+      const sets = this.sets();
+      if (!sets.length || this.setAutoSelected) return;
+      this.setAutoSelected = true;
+      const lastId = localStorage.getItem(AnalysisComponent.LAST_SET_KEY);
+      const target =
+        sets.find((s) => s.id === lastId) ??
+        sets.find((s) => s.id === '00-start') ??
+        sets[0];
+      this.selectSet(target);
     });
-    this.api.listSets().subscribe({
-      next: (s) => {
-        this.sets.set(s);
-        if (s.length && !this.currentSet()) this.selectSet(s[0]);
-        s.forEach((set) => {
-          this.api.getDecisions(set.id).subscribe({
-            next: (r) => this.allDecisions.update((all) => ({ ...all, [set.id]: r.decisions })),
-          });
-        });
-      },
-      error: (e) => this.error.set(`Failed to load sets: ${e.message}`),
+
+    // When filters/sort change, keep selected paper visible; if filtered out, pick next.
+    effect(() => {
+      const works = this.filteredWorks();
+      const currentId = untracked(() => this.selectedWorkId());
+      if (!currentId || !works.length) return;
+      if (works.some((w) => w.id === currentId)) return;
+      const allWorks = untracked(() => this.currentSet()?.works ?? []);
+      const originalIdx = allWorks.findIndex((w) => w.id === currentId);
+      const next =
+        works.find((w) => allWorks.findIndex((aw) => aw.id === w.id) > originalIdx) ??
+        works[works.length - 1];
+      this.selectedWorkId.set(next.id);
+      setTimeout(() => this.scrollToWork(next.id));
     });
   }
 
   selectSet(s: ReviewSet): void {
-    this.currentSet.set(s);
     this.selectedWorkId.set(null);
+    this.currentSet.set(s);
+    localStorage.setItem(AnalysisComponent.LAST_SET_KEY, s.id);
     this.api.getDecisions(s.id).subscribe({
-      next: (r) => this.decisions.set(r.decisions),
+      next: (r) => {
+        this.decisions.set(r.decisions);
+        this.projectSvc.updateDecisionsForSet(s.id, r.decisions);
+      },
       error: (e) => this.error.set(`Failed to load decisions: ${e.message}`),
     });
   }
 
-  startSnowballing(): void {
-    this.api.runSnowballing().subscribe({
-      next: () => {
-        this.error.set(null);
-        this.refresh();
-      },
-      error: (e) => this.error.set(`Failed to run snowballing: ${e.message}`),
-    });
+  consensusCountFor(set: ReviewSet): { accepted: number; total: number } {
+    const setDecisions = this.projectSvc.allDecisions()[set.id] ?? [];
+    let accepted = 0;
+    for (const work of set.works) {
+      const votes = { selected: 0, rejected: 0 };
+      for (const d of setDecisions) {
+        if (d.work_id !== work.id) continue;
+        if (d.verdict === 'accept') votes.selected++;
+        else votes.rejected++;
+      }
+      if (votes.selected > votes.rejected) accepted++;
+    }
+    return { accepted, total: set.works.length };
   }
 
   @HostListener('document:keydown', ['$event'])
   handleKeyboard(event: KeyboardEvent): void {
     if (this.criterionDialog()) return;
     if (this.isTypingTarget(event.target)) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.shiftKey) {
+      if (event.key === 'J') { event.preventDefault(); this.moveSetSelection(1); }
+      else if (event.key === 'K') { event.preventDefault(); this.moveSetSelection(-1); }
+      return;
+    }
+    if (this.pendingKeys === 'f') {
+      this.pendingKeys = '';
+      event.preventDefault();
+      if (event.key === 'a') this.showSelected.update((v) => !v);
+      else if (event.key === 'u') this.showPending.update((v) => !v);
+      else if (event.key === 'r') this.showRejected.update((v) => !v);
+      else if (event.key === 'f') this.resultsMode.update((v) => !v);
+      else if (event.key === 's') this.cycleSortField();
+      else if (event.key === 'b') this.toggleSelectedWorkDetails();
+      return;
+    }
+
+    if (this.pendingKeys === 'sf' || this.pendingKeys === 'sb') {
+      const prev = this.pendingKeys;
+      this.pendingKeys = '';
+      event.preventDefault();
+      const dir = prev[1] === 'f' ? 'forward' : 'backward';
+      if (event.key === 's') this.runSnowballing(`${dir}-selected` as any);
+      else if (event.key === 'a') this.runSnowballing(`${dir}-remaining` as any);
+      return;
+    }
+
+    if (this.pendingKeys === 's') {
+      if (event.key === 'f' || event.key === 'b') {
+        this.pendingKeys = 's' + event.key;
+        event.preventDefault();
+        return;
+      }
+      this.pendingKeys = '';
+    }
+
     if (event.key === 'j') {
       event.preventDefault();
       this.moveSelection(1);
@@ -193,26 +235,13 @@ export class TriageComponent {
     } else if (event.key === 'r') {
       event.preventDefault();
       this.openCriterionDialog('reject');
+    } else if (event.key === 'f') {
+      event.preventDefault();
+      this.pendingKeys = 'f';
     } else if (event.key === 's') {
       event.preventDefault();
-      this.cycleSortField();
-    } else if (event.key === 't') {
-      event.preventDefault();
-      this.cycleVisibilityMode();
+      this.pendingKeys = 's';
     }
-  }
-
-  onViewChange(value: string | null): void {
-    if (value === '__results__') {
-      this.resultsMode.set(true);
-    } else {
-      this.resultsMode.set(false);
-      this.researcherSvc.set(value || null);
-    }
-  }
-
-  setResearcher(id: string | null): void {
-    this.researcherSvc.set(id || null);
   }
 
   setVisibilityMode(mode: VisibilityMode): void {
@@ -225,21 +254,6 @@ export class TriageComponent {
     const me = this.activeResearcherId();
     if (!me) return undefined;
     return this.decisions().find((d) => d.work_id === workId && d.researcher_id === me);
-  }
-
-  consensusCountFor(set: ReviewSet): { accepted: number; total: number } {
-    const setDecisions = this.allDecisions()[set.id] ?? [];
-    let accepted = 0;
-    for (const work of set.works) {
-      const votes = { selected: 0, rejected: 0 };
-      for (const d of setDecisions) {
-        if (d.work_id !== work.id) continue;
-        if (d.verdict === 'accept') votes.selected++;
-        else votes.rejected++;
-      }
-      if (votes.selected > votes.rejected) accepted++;
-    }
-    return { accepted, total: set.works.length };
   }
 
   consensusFor(workId: string): 'accept' | 'reject' | null {
@@ -258,6 +272,12 @@ export class TriageComponent {
       if (decision.verdict === 'reject') rejected += 1;
     }
     return { selected, rejected };
+  }
+
+  commentCountFor(workId: string): number {
+    return this.decisions().filter((decision) =>
+      decision.work_id === workId && !!decision.note?.trim(),
+    ).length;
   }
 
   noteFor(workId: string): string {
@@ -287,6 +307,7 @@ export class TriageComponent {
           );
           this.clearDraft(work.id);
           this.error.set(null);
+          this.reloadSets();
         },
         error: (e) => this.error.set(`Failed to clear decision: ${e.message}`),
       });
@@ -307,12 +328,116 @@ export class TriageComponent {
     this.putDecision(set.id, work.id, body, me, this.fallbackSelectionAfter(work.id));
   }
 
+  runSnowballing(kind: 'both-remaining' | 'backward-remaining' | 'forward-remaining' | 'backward-selected' | 'forward-selected'): void {
+    this.snowballMenuOpen.set(false);
+    this.error.set(null);
+
+    if (kind === 'backward-selected' || kind === 'forward-selected') {
+      const work = this.selectedWork();
+      if (!work) { this.error.set('Select a paper first.'); return; }
+      this.snowballRunning.set(true);
+      const direction = kind === 'backward-selected' ? 'backward' : 'forward';
+      this.api.runPaperSnowballing(direction, work.bib_key).subscribe({
+        next: (updatedSets) => {
+          this.snowballRunning.set(false);
+          this.syncSetsAfterSnowballing(updatedSets);
+        },
+        error: (e) => {
+          this.error.set(`Snowballing failed: ${e.error?.detail ?? e.message}`);
+          this.snowballRunning.set(false);
+        },
+      });
+      return;
+    }
+
+    this.snowballRunning.set(true);
+    const directions: Array<'backward' | 'forward'> =
+      kind === 'both-remaining' ? ['backward', 'forward'] : [kind.split('-')[0] as 'backward' | 'forward'];
+
+    const runNext = (accumulated: ReviewSet[], remaining: typeof directions) => {
+      if (!remaining.length) {
+        this.snowballRunning.set(false);
+        this.syncSetsAfterSnowballing(accumulated);
+        return;
+      }
+      const [head, ...tail] = remaining;
+      this.api.runGlobalSnowballing(head).subscribe({
+        next: (updatedSets) => runNext([...accumulated, ...updatedSets], tail),
+        error: (e) => {
+          this.error.set(`Snowballing failed: ${e.error?.detail ?? e.message}`);
+          this.snowballRunning.set(false);
+        },
+      });
+    };
+
+    runNext([], directions);
+  }
+
+  private syncSetsAfterSnowballing(updatedSets: ReviewSet[]): void {
+    if (!updatedSets.length) return;
+    this.projectSvc.sets.update((all) => {
+      const byId = new Map(updatedSets.map((s) => [s.id, s]));
+      return all.map((s) => byId.get(s.id) ?? s).concat(
+        updatedSets.filter((s) => !all.some((a) => a.id === s.id))
+      );
+    });
+    const current = this.currentSet();
+    if (current) {
+      const refreshed = updatedSets.find((s) => s.id === current.id);
+      if (refreshed) this.currentSet.set(refreshed);
+    }
+  }
+
+  triggerBibImport(): void {
+    document.getElementById('bib-import-input')?.click();
+  }
+
+  onBibFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    this.importing.set(true);
+    this.error.set(null);
+    this.api.importBib('00-start', file).subscribe({
+      next: (updatedSet) => {
+        this.projectSvc.sets.update((all) =>
+          all.map((s) => (s.id === '00-start' ? updatedSet : s)),
+        );
+        this.importing.set(false);
+        input.value = '';
+        this.selectSet(updatedSet);
+      },
+      error: (e) => {
+        this.error.set(`Import failed: ${e.error?.detail ?? e.message}`);
+        this.importing.set(false);
+        input.value = '';
+      },
+    });
+  }
+
   selectWork(workId: string): void {
     this.selectedWorkId.set(workId);
   }
 
   isSelectedWork(workId: string): boolean {
     return this.selectedWork()?.id === workId;
+  }
+
+  isWorkExpanded(workId: string): boolean {
+    return !!this.expandedWorkIds()[workId];
+  }
+
+  toggleWorkDetails(workId: string): void {
+    this.expandedWorkIds.update((expanded) => ({
+      ...expanded,
+      [workId]: !expanded[workId],
+    }));
+  }
+
+  toggleSelectedWorkDetails(): void {
+    const work = this.selectedWork();
+    if (!work) return;
+    this.toggleWorkDetails(work.id);
   }
 
   openCriterionDialog(verdict: 'accept' | 'reject'): void {
@@ -382,7 +507,7 @@ export class TriageComponent {
     const set = this.currentSet();
     if (!set) return;
     const existing = this.decisionFor(work.id);
-    if (!existing) return; // no decision yet → can't attach note
+    if (!existing) return;
     const note = this.noteFor(work.id);
     if ((note || null) === (existing.note || null)) {
       this.clearDraft(work.id);
@@ -412,8 +537,22 @@ export class TriageComponent {
         this.selectFallbackIfHidden(workId, fallbackWorkId);
         this.clearDraft(workId);
         this.error.set(null);
+        this.reloadSets();
       },
       error: (e) => this.error.set(`Failed to save decision: ${e.message}`),
+    });
+  }
+
+  private reloadSets(): void {
+    this.api.listSets().subscribe({
+      next: (sets) => {
+        this.projectSvc.sets.set(sets);
+        const cs = this.currentSet();
+        if (cs) {
+          const updated = sets.find((s) => s.id === cs.id);
+          if (updated) this.currentSet.set(updated);
+        }
+      },
     });
   }
 
@@ -445,6 +584,15 @@ export class TriageComponent {
     setTimeout(() => this.scrollToWork(fallbackWorkId));
   }
 
+  private moveSetSelection(delta: number): void {
+    const sets = this.sets();
+    if (!sets.length) return;
+    const currentId = this.currentSet()?.id;
+    const currentIndex = Math.max(0, sets.findIndex((s) => s.id === currentId));
+    const next = sets[Math.min(Math.max(currentIndex + delta, 0), sets.length - 1)];
+    this.selectSet(next);
+  }
+
   private moveSelection(delta: number): void {
     const works = this.filteredWorks();
     if (!works.length) return;
@@ -462,11 +610,6 @@ export class TriageComponent {
       const work = this.selectedWork();
       if (work) this.scrollToWork(work.id);
     });
-  }
-
-  private cycleVisibilityMode(): void {
-    const currentIndex = VISIBILITY_MODES.indexOf(this.visibilityMode());
-    this.setVisibilityMode(VISIBILITY_MODES[(currentIndex + 1) % VISIBILITY_MODES.length]);
   }
 
   private rememberCriterion(verdict: 'accept' | 'reject', criterionId: string): void {

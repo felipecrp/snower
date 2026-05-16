@@ -1,9 +1,21 @@
 import { Routes } from '@angular/router';
 
-import { SettingsComponent } from './settings/settings';
-import { TriageComponent } from './triage/triage';
-
 export const routes: Routes = [
-  { path: '', component: TriageComponent },
-  { path: 'settings', component: SettingsComponent },
+  { path: '', redirectTo: 'analysis', pathMatch: 'full' },
+  {
+    path: 'settings',
+    loadComponent: () => import('./settings/settings').then((m) => m.SettingsComponent),
+  },
+  {
+    path: 'start-set',
+    loadComponent: () => import('./start-set/start-set').then((m) => m.StartSetComponent),
+  },
+  {
+    path: 'analysis',
+    loadComponent: () => import('./analysis/analysis').then((m) => m.AnalysisComponent),
+  },
+  {
+    path: 'snowballing',
+    loadComponent: () => import('./snowballing/snowballing').then((m) => m.SnowballingComponent),
+  },
 ];

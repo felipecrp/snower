@@ -9,10 +9,12 @@ import {
   DecisionInput,
   DecisionsResponse,
   Project,
+  ProjectInfoInput,
   Researcher,
   ResearcherInput,
   ReviewSet,
   SetKind,
+  WorkspaceInfo,
 } from './models';
 import { ResearcherService } from './researcher.service';
 
@@ -49,8 +51,37 @@ export class ApiService {
     return this.http.post<ReviewSet[]>('/api/snowballing', {});
   }
 
-  runGlobalSnowballing(kind: Exclude<SetKind, 'start'>): Observable<ReviewSet[]> {
-    return this.http.post<ReviewSet[]>(`/api/snowballing/${kind}`, {});
+  runGlobalSnowballing(kind: Exclude<SetKind, 'start'>, force = false): Observable<ReviewSet[]> {
+    const params = force ? '?force=true' : '';
+    return this.http.post<ReviewSet[]>(`/api/snowballing/${kind}${params}`, {});
+  }
+
+  runPaperSnowballing(kind: Exclude<SetKind, 'start'>, bibKey: string): Observable<ReviewSet[]> {
+    return this.http.post<ReviewSet[]>(`/api/snowballing/${kind}/${encodeURIComponent(bibKey)}`, {});
+  }
+
+  importBib(setId: string, file: File): Observable<ReviewSet> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<ReviewSet>(`/api/sets/${setId}/import`, form, {
+      headers: this.researcherHeaders(),
+    });
+  }
+
+  getWorkspace(): Observable<WorkspaceInfo> {
+    return this.http.get<WorkspaceInfo>('/api/workspace');
+  }
+
+  newProject(path: string, name: string, description?: string): Observable<WorkspaceInfo> {
+    return this.http.post<WorkspaceInfo>('/api/workspace/new', { path, name, description });
+  }
+
+  openProject(path: string): Observable<WorkspaceInfo> {
+    return this.http.post<WorkspaceInfo>('/api/workspace/open', { path });
+  }
+
+  updateProjectInfo(body: ProjectInfoInput): Observable<Project> {
+    return this.http.put<Project>('/api/project/info', body);
   }
 
   getDecisions(setId: string): Observable<DecisionsResponse> {

@@ -1,0 +1,98 @@
+<div class="page">
+  <div class="page-header">
+    <h2>Snowballing</h2>
+    <div class="progress-summary" *ngIf="stats().total > 0">
+      <span class="progress-item">
+        Backward: <strong>{{ stats().backwardDone }}/{{ stats().total }}</strong>
+        <span class="pct">({{ backwardPct() }}%)</span>
+        <span class="progress-bar"><span class="fill" [style.width.%]="backwardPct()"></span></span>
+      </span>
+      <span class="progress-item">
+        Forward: <strong>{{ stats().forwardDone }}/{{ stats().total }}</strong>
+        <span class="pct">({{ forwardPct() }}%)</span>
+        <span class="progress-bar"><span class="fill" [style.width.%]="forwardPct()"></span></span>
+      </span>
+    </div>
+  </div>
+
+  <div class="action-bar" *ngIf="acceptedWorks().length">
+    <div class="select-actions">
+      <button (click)="selectUnsnowballed('backward')" [disabled]="running()">Select unsnowballed (backward)</button>
+      <button (click)="selectUnsnowballed('forward')" [disabled]="running()">Select unsnowballed (forward)</button>
+      <button *ngIf="selectedCount() > 0" (click)="clearSelection()" [disabled]="running()">Clear ({{ selectedCount() }})</button>
+    </div>
+    <div class="run-actions" *ngIf="selectedCount() > 0">
+      <button class="primary" (click)="runSnowballing('backward')" [disabled]="running()">
+        ← Run Backward ({{ selectedCount() }})
+      </button>
+      <button class="primary" (click)="runSnowballing('forward')" [disabled]="running()">
+        Run Forward ({{ selectedCount() }}) →
+      </button>
+    </div>
+  </div>
+
+  <div class="run-progress" *ngIf="progress() as p">
+    <div class="progress-track">
+      <div class="progress-fill" [style.width.%]="(p.done / p.total) * 100"></div>
+    </div>
+    <span>{{ p.kind }} snowballing: {{ p.done }}/{{ p.total }}
+      <span *ngIf="p.currentKey"> — processing {{ p.currentKey }}</span>
+    </span>
+  </div>
+
+  <div class="error" *ngIf="error() as err">{{ err }}</div>
+
+  <div class="works-list" *ngIf="acceptedWorks().length; else empty">
+    <table>
+      <thead>
+        <tr>
+          <th class="col-check"></th>
+          <th>Paper</th>
+          <th>Set</th>
+          <th class="col-status">Backward</th>
+          <th class="col-status">Forward</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          *ngFor="let item of acceptedWorks(); trackBy: trackByKey"
+          [class.selected-row]="isSelected(item.work.bib_key)"
+          (click)="toggleSelect(item.work.bib_key)"
+        >
+          <td class="col-check">
+            <input
+              type="checkbox"
+              [checked]="isSelected(item.work.bib_key)"
+              (click)="$event.stopPropagation()"
+              (change)="toggleSelect(item.work.bib_key)"
+            />
+          </td>
+          <td class="title-cell">
+            <span class="title">{{ item.work.title }}</span>
+            <span class="meta">{{ item.work.authors[0] }}<span *ngIf="item.work.year"> · {{ item.work.year }}</span></span>
+          </td>
+          <td class="col-set"><span class="set-badge">{{ item.set.id }}</span></td>
+          <td class="col-status">
+            <span *ngIf="item.backwardDone" class="status done" [title]="item.work.last_backward_snowballed_at">
+              ✓ {{ item.work.last_backward_found ?? '?' }} found
+            </span>
+            <span *ngIf="!item.backwardDone" class="status pending">—</span>
+          </td>
+          <td class="col-status">
+            <span *ngIf="item.forwardDone" class="status done" [title]="item.work.last_forward_snowballed_at">
+              ✓ {{ item.work.last_forward_found ?? '?' }} found
+            </span>
+            <span *ngIf="!item.forwardDone" class="status pending">—</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ng-template #empty>
+    <div class="empty">
+      <p *ngIf="projectSvc.sets().length === 0">No sets yet. Import a start set and triage papers first.</p>
+      <p *ngIf="projectSvc.sets().length > 0">No consensus-accepted papers yet. Complete the triage in the Analysis tab first.</p>
+    </div>
+  </ng-template>
+</div>

@@ -17,7 +17,7 @@ from bibtexparser.customization import convert_to_unicode
 from snow.domain.identity import WorkRef, work_id
 from snow.domain.models import Work
 
-_KNOWN_FIELDS = {"title", "author", "year", "journal", "booktitle", "doi", "url", "abstract"}
+_KNOWN_FIELDS = {"title", "author", "year", "journal", "booktitle", "doi", "url", "pdf_url", "abstract"}
 
 
 def _split_authors(raw: str) -> list[str]:
@@ -48,6 +48,7 @@ def _entry_to_work(entry: dict[str, str]) -> Work:
         venue=venue,
         doi=doi,
         url=entry.get("url"),
+        pdf_url=entry.get("pdf_url"),
         abstract=entry.get("abstract"),
         extra=extra,
     )
@@ -69,6 +70,8 @@ def _work_to_entry(work: Work, entry_type: str = "article") -> dict[str, str]:
         entry["doi"] = work.doi
     if work.url:
         entry["url"] = work.url
+    if work.pdf_url:
+        entry["pdf_url"] = work.pdf_url
     if work.abstract:
         entry["abstract"] = work.abstract
     entry.update(work.extra)

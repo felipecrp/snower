@@ -18,7 +18,7 @@ class DescribeGetSet:
         assert r.status_code == 200
         body = r.json()
         assert body["id"] == "00-start"
-        assert {w["id"] for w in body["works"]} == {"doi:10/a", "doi:10/b"}
+        assert {w["id"] for w in body["works"]} == {"sha1:7775895baced66ce", "sha1:cdc005a8929a82bf"}
 
     def it_returns_400_for_invalid_id(self, client: TestClient):
         r = client.get("/api/sets/garbage")

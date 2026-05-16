@@ -1,4 +1,4 @@
-export type SetKind = 'start' | 'backward' | 'forward';
+export type SetKind = 'start' | 'backward' | 'forward' | 'orphan';
 export type Verdict = 'accept' | 'reject';
 export type CriterionKind = 'include' | 'exclude';
 
@@ -22,11 +22,18 @@ export interface CriterionInput extends Criterion {
   previous_id?: string | null;
 }
 
+export interface ProviderConfig {
+  name: string;
+  enabled: boolean;
+  options: Record<string, string>;
+}
+
 export interface Project {
   name: string;
   description?: string | null;
   researchers: Researcher[];
   criteria: Criterion[];
+  providers: ProviderConfig[];
 }
 
 export interface Work {
@@ -38,6 +45,7 @@ export interface Work {
   venue?: string | null;
   doi?: string | null;
   url?: string | null;
+  pdf_url?: string | null;
   abstract?: string | null;
   last_backward_snowballed_at?: string | null;
   last_forward_snowballed_at?: string | null;
@@ -79,4 +87,15 @@ export interface DecisionInput {
   verdict: Verdict;
   criterion_id?: string | null;
   note?: string | null;
+}
+
+export interface WorkspaceInfo {
+  path: string;
+  name: string;
+}
+
+export interface ProjectInfoInput {
+  name: string;
+  description?: string | null;
+  openalex_email?: string | null;
 }

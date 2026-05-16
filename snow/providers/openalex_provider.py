@@ -23,7 +23,7 @@ import re
 
 import httpx
 
-from snow.domain.identity import WorkRef
+from snow.domain.identity import BibliographicWork
 from snow.domain.models import Work
 from .base import Provider
 
@@ -49,7 +49,21 @@ def _titles_match(query: str, found: str) -> bool:
     jaccard = len(q & f) / len(q | f)
     truncated_match = len(f) >= 2 and f.issubset(q)
     return jaccard >= _TITLE_MATCH_THRESHOLD or truncated_match
-_WORK_FIELDS = "title,authorships,publication_year,doi"
+
+
+def _abstract_from_inverted_index(index: dict | None) -> str | None:
+    if not index:
+        return None
+    positions: dict[int, str] = {}
+    for word, indexes in index.items():
+        for i in indexes or []:
+            positions[i] = word
+    if not positions:
+        return None
+    return " ".join(positions[i] for i in sorted(positions))
+
+
+_WORK_FIELDS = "title,authorships,publication_year,doi,primary_location,best_oa_location,abstract_inverted_index"
 _PAGE_SIZE = 200
 _MAX_CITATIONS = 1000
 
@@ -92,7 +106,7 @@ class OpenAlexProvider(Provider):
             data = self._get(f"/works/doi:{work.doi}", self._params())
             if data and data.get("id"):
                 return data["id"].rsplit("/", 1)[-1]
-            return None
+            logger.debug("OpenAlex: DOI lookup failed for %s; falling back to title search", work.doi)
 
         # Build candidate queries: full title + main title (before first colon/dash).
         main_title = re.split(r"[:—]", work.title, maxsplit=1)[0].strip()
@@ -132,7 +146,37 @@ class OpenAlexProvider(Provider):
         logger.warning("OpenAlex: no reliable match for '%s'", work.title)
         return None
 
-    def _to_work_ref(self, item: dict) -> WorkRef | None:
+    def _work_data(self, work: Work) -> dict | None:
+        work_id = self._work_id(work)
+        if not work_id:
+            return None
+        return self._get(
+            f"/works/{work_id}",
+            self._params({"select": "id,title,doi,primary_location,best_oa_location,abstract_inverted_index"}),
+        )
+
+    def enrich_work(self, work: Work) -> Work:
+        """Fill missing bibliographic fields from OpenAlex without overwriting originals."""
+        if work.doi and work.venue and work.url and work.pdf_url and work.abstract:
+            return work
+        data = self._work_data(work)
+        if not data:
+            return work
+        ref = self._to_work_ref(data)
+        if not ref:
+            return work
+        return work.model_copy(update={
+            "doi": work.doi or ref.doi,
+            "venue": work.venue or ref.venue,
+            "url": work.url or ref.url,
+            "pdf_url": work.pdf_url or ref.pdf_url,
+            "abstract": work.abstract or ref.abstract,
+        })
+
+    def enrich_works(self, works: list[Work]) -> list[Work]:
+        return [self.enrich_work(work) for work in works]
+
+    def _to_work_ref(self, item: dict) -> BibliographicWork | None:
         title = item.get("title")
         if not title:
             return None
@@ -144,9 +188,25 @@ class OpenAlexProvider(Provider):
         )
         raw_doi = item.get("doi") or ""
         doi = raw_doi.removeprefix("https://doi.org/") or None
-        return WorkRef(title=title, year=year, authors=authors, doi=doi)
+        primary_location = item.get("primary_location") or {}
+        best_oa_location = item.get("best_oa_location") or {}
+        source = primary_location.get("source") or {}
+        venue = source.get("display_name") or None
+        url = primary_location.get("landing_page_url") or raw_doi or None
+        pdf_url = best_oa_location.get("pdf_url") or primary_location.get("pdf_url") or None
+        abstract = _abstract_from_inverted_index(item.get("abstract_inverted_index"))
+        return BibliographicWork(
+            title=title,
+            year=year,
+            authors=authors,
+            doi=doi,
+            venue=venue,
+            url=url,
+            pdf_url=pdf_url,
+            abstract=abstract,
+        )
 
-    def fetch_references(self, work: Work) -> list[WorkRef]:
+    def fetch_references(self, work: Work) -> list[BibliographicWork]:
         work_id = self._work_id(work)
         if not work_id:
             return []
@@ -162,7 +222,7 @@ class OpenAlexProvider(Provider):
             return []
 
         # Batch-fetch referenced works in chunks of _PAGE_SIZE.
-        refs: list[WorkRef] = []
+        refs: list[BibliographicWork] = []
         for i in range(0, len(ref_ids), _PAGE_SIZE):
             chunk = ref_ids[i : i + _PAGE_SIZE]
             ids_filter = "|".join(wid.rsplit("/", 1)[-1] for wid in chunk)
@@ -179,12 +239,12 @@ class OpenAlexProvider(Provider):
 
         return refs
 
-    def fetch_citations(self, work: Work) -> list[WorkRef]:
+    def fetch_citations(self, work: Work) -> list[BibliographicWork]:
         work_id = self._work_id(work)
         if not work_id:
             return []
 
-        refs: list[WorkRef] = []
+        refs: list[BibliographicWork] = []
         page = 1
         while len(refs) < _MAX_CITATIONS:
             data = self._get(

@@ -2,13 +2,25 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+import pathlib
+import tempfile
+
+from fastapi import APIRouter, Depends, Header, HTTPException, UploadFile
 
 from snow.api.state import get_repo
 from snow.domain.models import Set, SetKind
+from snow.providers.openalex_provider import OpenAlexProvider
+from snow.storage import bib
 from snow.storage.repo import ProjectRepo
 
 router = APIRouter(prefix="/api/sets", tags=["sets"])
+
+
+def _openalex_provider(repo: ProjectRepo) -> OpenAlexProvider:
+    for cfg in repo.load_project().providers:
+        if cfg.enabled and cfg.name == "openalex":
+            return OpenAlexProvider(email=cfg.options.get("email") or None)
+    return OpenAlexProvider()
 
 
 @router.get("", response_model=list[Set])
@@ -40,3 +52,33 @@ def start_snowballing(
         raise HTTPException(400, str(e))
     except FileNotFoundError:
         raise HTTPException(404, f"Set not found: {set_id}")
+
+
+@router.post("/{set_id}/import", response_model=Set)
+async def import_bib(
+    set_id: str,
+    file: UploadFile,
+    repo: ProjectRepo = Depends(get_repo),
+    x_researcher_id: str | None = Header(default=None),
+) -> Set:
+    """Import works from a .bib file upload into an existing set.
+
+    If a researcher is active, decisions are created for works whose `groups`
+    field matches a criterion ID.
+    """
+    if set_id not in repo.list_set_ids():
+        raise HTTPException(404, f"Set not found: {set_id}")
+    content = await file.read()
+    with tempfile.NamedTemporaryFile(suffix=".bib", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = pathlib.Path(tmp.name)
+    try:
+        works = bib.load(tmp_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    works = _openalex_provider(repo).enrich_works(works)
+    criteria = repo.load_project().criteria if x_researcher_id else None
+    try:
+        return repo.import_bib_to_set(set_id, works, criteria=criteria, researcher_id=x_researcher_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))

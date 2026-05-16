@@ -46,7 +46,6 @@ def upsert_decision(
     researcher: Researcher = Depends(get_active_researcher),
 ) -> Decision:
     _ensure_set_exists(repo, set_id)
-    decisions, resolutions = repo.load_decisions(set_id)
     new_decision = Decision(
         work_id=work_id,
         researcher_id=researcher.id,
@@ -55,11 +54,8 @@ def upsert_decision(
         note=body.note,
         decided_at=datetime.now(timezone.utc),
     )
-    decisions = [
-        d for d in decisions if not (d.work_id == work_id and d.researcher_id == researcher.id)
-    ]
-    decisions.append(new_decision)
-    repo.save_decisions(set_id, decisions, resolutions)
+    repo.save_researcher_decision(set_id, new_decision)
+    repo.recalculate_orphans()
     return new_decision
 
 
@@ -71,8 +67,5 @@ def delete_decision(
     researcher: Researcher = Depends(get_active_researcher),
 ) -> None:
     _ensure_set_exists(repo, set_id)
-    decisions, resolutions = repo.load_decisions(set_id)
-    filtered = [
-        d for d in decisions if not (d.work_id == work_id and d.researcher_id == researcher.id)
-    ]
-    repo.save_decisions(set_id, filtered, resolutions)
+    repo.delete_researcher_decision(set_id, work_id, researcher.id)
+    repo.recalculate_orphans()

@@ -3,9 +3,9 @@
 A `work_id` is a deterministic string derived from a bibliographic entry.
 It is used to deduplicate the same article across sets and providers.
 
-Resolution order:
-1. DOI (normalized to lowercase, URL prefix stripped). Authoritative.
-2. SHA-1 hash of a normalized tuple (first author surname, year, title).
+The ID is a SHA-1 hash of a normalized tuple (first author surname, year, title).
+DOI is intentionally kept as metadata, not identity, so enrichment can add it
+later without changing existing decisions or relations.
 """
 
 from __future__ import annotations
@@ -32,6 +32,23 @@ class WorkRef:
     doi: str | None = None
 
 
+@dataclass(frozen=True)
+class BibliographicWork:
+    """Provider result with identity fields plus optional bibliographic metadata."""
+
+    title: str | None = None
+    year: int | None = None
+    authors: tuple[str, ...] = ()
+    doi: str | None = None
+    venue: str | None = None
+    url: str | None = None
+    pdf_url: str | None = None
+    abstract: str | None = None
+
+    def ref(self) -> WorkRef:
+        return WorkRef(title=self.title, year=self.year, authors=self.authors, doi=self.doi)
+
+
 def normalize_doi(doi: str) -> str:
     return _DOI_URL_PREFIX.sub("", doi).strip().lower()
 
@@ -55,9 +72,6 @@ def normalize_author_surname(author: str) -> str:
 
 
 def work_id(ref: WorkRef) -> str:
-    if ref.doi:
-        return f"doi:{normalize_doi(ref.doi)}"
-
     surname = normalize_author_surname(ref.authors[0]) if ref.authors else ""
     title = normalize_title(ref.title or "")
     year = str(ref.year) if ref.year else ""

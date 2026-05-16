@@ -1,1 +1,42 @@
-<router-outlet />
+<header class="topbar">
+  <div class="brand">
+    <strong>Snow</strong>
+    <span class="project" *ngIf="project() as p">— {{ p.name }}</span>
+  </div>
+  <div class="topbar-right">
+    <div class="researcher">
+      <label for="researcher-select">Researcher:</label>
+      <select
+        id="researcher-select"
+        [ngModel]="selectValue()"
+        (ngModelChange)="onResearcherChange($event)"
+      >
+        <option [ngValue]="null">— select —</option>
+        <option *ngFor="let r of project()?.researchers" [ngValue]="r.id">{{ r.name }}</option>
+      </select>
+    </div>
+  </div>
+</header>
+
+<div class="tab-content">
+  <router-outlet />
+</div>
+
+<nav class="tab-bar">
+  <a routerLink="/settings" routerLinkActive="active" class="tab-link">
+    <span class="tab-icon">⚙</span>
+    <span class="tab-label">Settings</span>
+  </a>
+  <a routerLink="/start-set" routerLinkActive="active" class="tab-link">
+    <span class="tab-icon">📥</span>
+    <span class="tab-label">Start Set</span>
+  </a>
+  <a routerLink="/analysis" routerLinkActive="active" class="tab-link">
+    <span class="tab-icon">🔍</span>
+    <span class="tab-label">Analysis</span>
+  </a>
+  <a routerLink="/snowballing" routerLinkActive="active" class="tab-link">
+    <span class="tab-icon">❄</span>
+    <span class="tab-label">Snowballing</span>
+  </a>
+</nav>

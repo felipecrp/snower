@@ -65,7 +65,7 @@ def _seed_decision(project_dir, researcher_id: str, criterion_id: str | None = "
     repo = ProjectRepo(project_dir)
     decisions = [
         Decision(
-            work_id="doi:10/a",
+            work_id="sha1:7775895baced66ce",
             researcher_id=researcher_id,
             verdict=Verdict.ACCEPT,
             criterion_id=criterion_id,
@@ -80,7 +80,7 @@ def _seed_resolution(project_dir, by: str):
     decisions, resolutions = repo.load_decisions("00-start")
     resolutions.append(
         Resolution(
-            work_id="doi:10/a",
+            work_id="sha1:7775895baced66ce",
             verdict=Verdict.ACCEPT,
             by=by,
             resolved_at=datetime.now(timezone.utc),

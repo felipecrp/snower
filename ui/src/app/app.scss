@@ -1,0 +1,94 @@
+:host {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+  overflow: hidden;
+  font-family: system-ui, sans-serif;
+  color: #1f2328;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f8fafc;
+  flex-shrink: 0;
+}
+
+.brand {
+  font-size: 1rem;
+
+  .project { color: #6b7280; margin-left: 0.5rem; }
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.researcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+
+  select {
+    font: inherit;
+    padding: 0.35rem 0.55rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: white;
+  }
+}
+
+.tab-content {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-content > * {
+  flex: 1;
+  min-height: 0;
+}
+
+.tab-bar {
+  display: flex;
+  align-items: center;
+  padding: 0.3rem 1rem 0.9rem;
+  border-top: 1px solid #e5e7eb;
+  background: #f8fafc;
+  flex-shrink: 0;
+  gap: 0.25rem;
+}
+
+.tab-link {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1.1rem;
+  text-decoration: none;
+  color: #6b7280;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+
+  &:hover {
+    background: #dbeafe;
+    color: #1e40af;
+  }
+
+  &.active {
+    color: #1e3a8a;
+    background: #bfdbfe;
+    border-bottom-color: #1d4ed8;
+    font-weight: 600;
+  }
+
+  .tab-icon { font-size: 0.95rem; line-height: 1; }
+}
