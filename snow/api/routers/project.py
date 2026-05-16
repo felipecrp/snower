@@ -49,6 +49,11 @@ def replace_researchers(
     existing_ids = {r.id for r in project.researchers}
     renames = _collect_renames(items, existing_ids)
 
+    # IDs that are gone (not renamed, truly removed)
+    renamed_old_ids = set(renames.keys())
+    kept_ids = {r.id for r in items} | renamed_old_ids
+    removed_ids = existing_ids - kept_ids
+
     project.researchers = [
         Researcher(id=r.id, name=r.name, email=r.email) for r in items
     ]
@@ -56,6 +61,8 @@ def replace_researchers(
 
     if renames:
         _rewrite_researcher_refs(repo, renames)
+    if removed_ids:
+        _delete_researcher_decisions(repo, removed_ids)
     return project.researchers
 
 
@@ -100,6 +107,14 @@ def _collect_renames(
                 )
             renames[item.previous_id] = item.id
     return renames
+
+
+def _delete_researcher_decisions(repo: ProjectRepo, removed_ids: set[str]) -> None:
+    for set_id in repo.list_set_ids():
+        decisions, resolutions = repo.load_decisions(set_id)
+        filtered = [d for d in decisions if d.researcher_id not in removed_ids]
+        if len(filtered) != len(decisions):
+            repo.save_decisions(set_id, filtered, resolutions)
 
 
 def _rewrite_researcher_refs(repo: ProjectRepo, renames: dict[str, str]) -> None:

@@ -140,6 +140,26 @@ class DescribeRenameResearcher:
         assert r.status_code == 400
 
 
+class DescribeRemoveResearcher:
+    def it_deletes_their_decisions_across_all_sets(self, client: TestClient, project_dir):
+        _seed_decision(project_dir, researcher_id="alice")
+        _seed_decision(project_dir, researcher_id="bob")
+        r = client.put(
+            "/api/project/researchers",
+            json=[{"id": "bob", "name": "Bob"}],
+        )
+        assert r.status_code == 200
+        decisions = client.get("/api/sets/00-start/decisions").json()["decisions"]
+        assert [d["researcher_id"] for d in decisions] == ["bob"]
+
+    def it_leaves_resolutions_intact(self, client: TestClient, project_dir):
+        _seed_decision(project_dir, researcher_id="alice")
+        _seed_resolution(project_dir, by="alice")
+        client.put("/api/project/researchers", json=[{"id": "bob", "name": "Bob"}])
+        resolutions = client.get("/api/sets/00-start/decisions").json()["resolutions"]
+        assert len(resolutions) == 1
+
+
 class DescribeRenameCriterion:
     def it_propagates_id_change_to_decisions(self, client: TestClient, project_dir):
         _seed_decision(project_dir, researcher_id="alice", criterion_id="inc1")
