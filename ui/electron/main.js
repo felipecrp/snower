@@ -4,6 +4,7 @@ const TARGET_URL = process.env.SNOW_UI_URL || 'http://localhost:4200';
 
 function createWindow() {
   const win = new BrowserWindow({
+    title: 'Snow',
     width: 1400,
     height: 900,
     webPreferences: {

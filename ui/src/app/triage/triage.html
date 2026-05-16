@@ -15,7 +15,9 @@
         <option *ngFor="let r of project()?.researchers" [ngValue]="r.id">{{ r.name }}</option>
       </select>
     </div>
-    <a routerLink="/settings" class="settings-link">Settings</a>
+    <a routerLink="/settings" class="settings-link" aria-label="Settings" title="Settings">
+      <fa-icon [icon]="settingsIcon" />
+    </a>
   </div>
 </header>
 
@@ -32,6 +34,10 @@
       <span class="set-count">{{ s.works.length }}</span>
     </li>
   </ul>
+  <div class="snowballing-actions">
+    <button type="button" (click)="startSnowballing('backward')">Backward</button>
+    <button type="button" (click)="startSnowballing('forward')">Forward</button>
+  </div>
 </aside>
 
 <main class="works">
@@ -92,6 +98,10 @@
           <span *ngIf="w.year"> · {{ w.year }}</span>
           <span *ngIf="w.venue"> · {{ w.venue }}</span>
           <a *ngIf="w.doi" [href]="'https://doi.org/' + w.doi" target="_blank">{{ w.doi }}</a>
+        </div>
+        <div class="votes" *ngIf="voteCountsFor(w.id) as votes">
+          <span class="badge accept">{{ votes.selected }} selected</span>
+          <span class="badge reject">{{ votes.rejected }} rejected</span>
         </div>
       </header>
 
@@ -164,6 +174,15 @@
       (keydown.escape)="closeCriterionDialog(); $event.preventDefault()"
       (keydown.arrowDown)="moveHighlightedCriterion(1); $event.preventDefault()"
       (keydown.arrowUp)="moveHighlightedCriterion(-1); $event.preventDefault()"
+    />
+
+    <input
+      type="text"
+      placeholder="justification (optional)"
+      [ngModel]="criterionNote()"
+      (ngModelChange)="updateCriterionNote($event)"
+      (keydown.enter)="confirmCriterionDialog(); $event.preventDefault()"
+      (keydown.escape)="closeCriterionDialog(); $event.preventDefault()"
     />
 
     <ul>

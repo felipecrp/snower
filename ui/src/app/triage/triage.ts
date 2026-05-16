@@ -2,6 +2,8 @@ import { CommonModule } from '@angular/common';
 import { Component, HostListener, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
+import { faGear } from '@fortawesome/free-solid-svg-icons';
 
 import { ApiService } from '../api.service';
 import {
@@ -25,7 +27,7 @@ const VISIBILITY_MODES: VisibilityMode[] = ['pending', 'selected', 'rejected', '
 @Component({
   selector: 'app-triage',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FontAwesomeModule, FormsModule, RouterLink],
   templateUrl: './triage.html',
   styleUrl: './triage.scss',
 })
@@ -48,8 +50,10 @@ export class TriageComponent {
   readonly selectedWorkId = signal<string | null>(null);
   readonly criterionDialog = signal<CriterionDialog | null>(null);
   readonly criterionQuery = signal('');
+  readonly criterionNote = signal('');
   readonly highlightedCriterionIndex = signal(0);
   readonly lastCriterionByVerdict = signal<Partial<Record<'accept' | 'reject', string>>>({});
+  readonly settingsIcon = faGear;
 
   readonly filteredWorks = computed(() => {
     const set = this.currentSet();
@@ -115,7 +119,14 @@ export class TriageComponent {
 
   refresh(): void {
     this.api.getProject().subscribe({
-      next: (p) => this.project.set(p),
+      next: (p) => {
+        this.project.set(p);
+        document.title = `Snow - ${p.name}`;
+        const activeId = this.activeResearcherId();
+        if (activeId && !p.researchers.some((r) => r.id === activeId)) {
+          this.setResearcher(null);
+        }
+      },
       error: (e) => this.error.set(`Failed to load project: ${e.message}`),
     });
     this.api.listSets().subscribe({
@@ -133,6 +144,22 @@ export class TriageComponent {
     this.api.getDecisions(s.id).subscribe({
       next: (r) => this.decisions.set(r.decisions),
       error: (e) => this.error.set(`Failed to load decisions: ${e.message}`),
+    });
+  }
+
+  startSnowballing(kind: 'backward' | 'forward'): void {
+    this.api.runGlobalSnowballing(kind).subscribe({
+      next: (created) => {
+        this.sets.update((existing) => {
+          const createdIds = new Set(created.map((s) => s.id));
+          return [...existing.filter((s) => !createdIds.has(s.id)), ...created].sort((a, b) =>
+            a.id.localeCompare(b.id),
+          );
+        });
+        if (created.length) this.selectSet(created[created.length - 1]);
+        this.error.set(null);
+      },
+      error: (e) => this.error.set(`Failed to run ${kind} snowballing: ${e.message}`),
     });
   }
 
@@ -161,7 +188,7 @@ export class TriageComponent {
     }
   }
 
-  setResearcher(id: string): void {
+  setResearcher(id: string | null): void {
     this.researcherSvc.set(id || null);
   }
 
@@ -175,6 +202,17 @@ export class TriageComponent {
     const me = this.activeResearcherId();
     if (!me) return undefined;
     return this.decisions().find((d) => d.work_id === workId && d.researcher_id === me);
+  }
+
+  voteCountsFor(workId: string): { selected: number; rejected: number } {
+    let selected = 0;
+    let rejected = 0;
+    for (const decision of this.decisions()) {
+      if (decision.work_id !== workId) continue;
+      if (decision.verdict === 'accept') selected += 1;
+      if (decision.verdict === 'reject') rejected += 1;
+    }
+    return { selected, rejected };
   }
 
   noteFor(workId: string): string {
@@ -248,6 +286,7 @@ export class TriageComponent {
     this.selectedWorkId.set(work.id);
     this.criterionDialog.set({ verdict, workId: work.id });
     this.criterionQuery.set('');
+    this.criterionNote.set(this.noteFor(work.id));
     this.highlightedCriterionIndex.set(0);
     setTimeout(() => document.getElementById('criterion-search')?.focus());
   }
@@ -255,12 +294,17 @@ export class TriageComponent {
   closeCriterionDialog(): void {
     this.criterionDialog.set(null);
     this.criterionQuery.set('');
+    this.criterionNote.set('');
     this.highlightedCriterionIndex.set(0);
   }
 
   updateCriterionQuery(query: string): void {
     this.criterionQuery.set(query);
     this.highlightedCriterionIndex.set(0);
+  }
+
+  updateCriterionNote(note: string): void {
+    this.criterionNote.set(note);
   }
 
   moveHighlightedCriterion(delta: number): void {
@@ -280,7 +324,7 @@ export class TriageComponent {
     const body: DecisionInput = {
       verdict: dialog.verdict,
       criterion_id: criterion.id,
-      note: this.noteFor(dialog.workId) || null,
+      note: this.criterionNote() || null,
     };
     this.rememberCriterion(dialog.verdict, criterion.id);
     this.putDecision(set.id, dialog.workId, body, me, this.fallbackSelectionAfter(dialog.workId));

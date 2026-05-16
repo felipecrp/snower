@@ -39,6 +39,8 @@ export interface Work {
   doi?: string | null;
   url?: string | null;
   abstract?: string | null;
+  last_backward_snowballed_at?: string | null;
+  last_forward_snowballed_at?: string | null;
 }
 
 export interface ReviewSet {

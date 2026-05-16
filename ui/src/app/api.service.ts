@@ -12,6 +12,7 @@ import {
   Researcher,
   ResearcherInput,
   ReviewSet,
+  SetKind,
 } from './models';
 import { ResearcherService } from './researcher.service';
 
@@ -38,6 +39,14 @@ export class ApiService {
 
   getSet(setId: string): Observable<ReviewSet> {
     return this.http.get<ReviewSet>(`/api/sets/${setId}`);
+  }
+
+  startSnowballing(setId: string, kind: Exclude<SetKind, 'start'>): Observable<ReviewSet> {
+    return this.http.post<ReviewSet>(`/api/sets/${setId}/snowballing/${kind}`, {});
+  }
+
+  runGlobalSnowballing(kind: Exclude<SetKind, 'start'>): Observable<ReviewSet[]> {
+    return this.http.post<ReviewSet[]>(`/api/snowballing/${kind}`, {});
   }
 
   getDecisions(setId: string): Observable<DecisionsResponse> {

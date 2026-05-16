@@ -67,6 +67,8 @@ class Work(BaseModel):
     url: str | None = None
     abstract: str | None = None
     extra: dict[str, str] = Field(default_factory=dict)
+    last_backward_snowballed_at: datetime | None = None
+    last_forward_snowballed_at: datetime | None = None
 
 
 class Set(BaseModel):
