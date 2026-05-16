@@ -58,7 +58,7 @@
         <input
           type="checkbox"
           [checked]="showSelected()"
-          (change)="showSelected.set($any($event.target).checked)"
+          (change)="showSelected.set($any($event.target).checked); visibilityMode.set('custom')"
         />
         show selected papers
       </label>
@@ -66,7 +66,7 @@
         <input
           type="checkbox"
           [checked]="showRejected()"
-          (change)="showRejected.set($any($event.target).checked)"
+          (change)="showRejected.set($any($event.target).checked); visibilityMode.set('custom')"
         />
         show rejected papers
       </label>
@@ -75,7 +75,13 @@
       </span>
     </div>
 
-    <article *ngFor="let w of filteredWorks(); trackBy: trackById" class="work">
+    <article
+      *ngFor="let w of filteredWorks(); trackBy: trackById"
+      class="work"
+      [id]="'work-' + w.id"
+      [class.selected]="isSelectedWork(w.id)"
+      (click)="selectWork(w.id)"
+    >
       <header>
         <h3>{{ w.title }}</h3>
         <div class="meta">
@@ -132,3 +138,43 @@
     <p *ngIf="!cs.works.length"><em>No works in this set.</em></p>
   </ng-container>
 </main>
+
+<div
+  class="dialog-backdrop"
+  *ngIf="criterionDialog() as dialog"
+  (click)="closeCriterionDialog()"
+>
+  <section class="criterion-dialog" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+    <header>
+      <strong>{{ dialog.verdict }}</strong>
+      <button type="button" (click)="closeCriterionDialog()">x</button>
+    </header>
+
+    <input
+      id="criterion-search"
+      type="text"
+      autofocus
+      placeholder="criterion id or description"
+      [ngModel]="criterionQuery()"
+      (ngModelChange)="updateCriterionQuery($event)"
+      (keydown.enter)="confirmCriterionDialog(); $event.preventDefault()"
+      (keydown.escape)="closeCriterionDialog(); $event.preventDefault()"
+      (keydown.arrowDown)="moveHighlightedCriterion(1); $event.preventDefault()"
+      (keydown.arrowUp)="moveHighlightedCriterion(-1); $event.preventDefault()"
+    />
+
+    <ul>
+      <li
+        *ngFor="let c of dialogCriteria(); let i = index; trackBy: trackById"
+        [class.highlighted]="highlightedCriterionIndex() === i"
+        (mouseenter)="highlightedCriterionIndex.set(i)"
+        (click)="confirmCriterionDialog()"
+      >
+        <span class="criterion-id">{{ c.id }}</span>
+        <span class="criterion-description">{{ c.description }}</span>
+      </li>
+    </ul>
+
+    <p *ngIf="!dialogCriteria().length"><em>No matching criteria.</em></p>
+  </section>
+</div>

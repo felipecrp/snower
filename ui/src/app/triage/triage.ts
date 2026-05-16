@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, HostListener, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
@@ -15,6 +15,11 @@ import {
 import { ResearcherService } from '../researcher.service';
 
 type SortField = 'author' | 'title' | 'venue' | 'criterion';
+type CriterionDialog = { verdict: 'accept' | 'reject'; workId: string };
+type VisibilityMode = 'pending' | 'selected' | 'rejected' | 'all' | 'custom';
+
+const SORT_FIELDS: SortField[] = ['author', 'title', 'venue', 'criterion'];
+const VISIBILITY_MODES: VisibilityMode[] = ['pending', 'selected', 'rejected', 'all'];
 
 @Component({
   selector: 'app-triage',
@@ -38,6 +43,12 @@ export class TriageComponent {
   readonly showSelected = signal(true);
   readonly showRejected = signal(false);
   readonly sortField = signal<SortField>('author');
+  readonly visibilityMode = signal<VisibilityMode>('selected');
+  readonly selectedWorkId = signal<string | null>(null);
+  readonly criterionDialog = signal<CriterionDialog | null>(null);
+  readonly criterionQuery = signal('');
+  readonly highlightedCriterionIndex = signal(0);
+  readonly lastCriterionByVerdict = signal<Partial<Record<'accept' | 'reject', string>>>({});
 
   readonly filteredWorks = computed(() => {
     const set = this.currentSet();
@@ -59,6 +70,26 @@ export class TriageComponent {
   readonly excludeCriteria = computed(
     () => this.project()?.criteria.filter((c) => c.kind === 'exclude') ?? [],
   );
+  readonly selectedWork = computed(() => {
+    const works = this.filteredWorks();
+    return works.find((w) => w.id === this.selectedWorkId()) ?? works[0] ?? null;
+  });
+  readonly dialogCriteria = computed(() => {
+    const dialog = this.criterionDialog();
+    if (!dialog) return [];
+    const kind = dialog.verdict === 'accept' ? 'include' : 'exclude';
+    const query = this.criterionQuery().trim();
+    const criteria = this.project()?.criteria.filter((c) => c.kind === kind) ?? [];
+    if (!query) return this.sortDialogCriteria(criteria, dialog.verdict);
+    return criteria
+      .map((criterion) => ({
+        criterion,
+        score: this.fuzzyScore(`${criterion.id} ${criterion.description}`, query),
+      }))
+      .filter((match) => match.score !== null)
+      .sort((a, b) => a.score! - b.score! || this.compareCriterion(a.criterion, b.criterion))
+      .map((match) => match.criterion);
+  });
 
   constructor() {
     this.refresh();
@@ -80,14 +111,46 @@ export class TriageComponent {
 
   selectSet(s: ReviewSet): void {
     this.currentSet.set(s);
+    this.selectedWorkId.set(null);
     this.api.getDecisions(s.id).subscribe({
       next: (r) => this.decisions.set(r.decisions),
       error: (e) => this.error.set(`Failed to load decisions: ${e.message}`),
     });
   }
 
+  @HostListener('document:keydown', ['$event'])
+  handleKeyboard(event: KeyboardEvent): void {
+    if (this.criterionDialog()) return;
+    if (this.isTypingTarget(event.target)) return;
+    if (event.key === 'j') {
+      event.preventDefault();
+      this.moveSelection(1);
+    } else if (event.key === 'k') {
+      event.preventDefault();
+      this.moveSelection(-1);
+    } else if (event.key === 'a') {
+      event.preventDefault();
+      this.openCriterionDialog('accept');
+    } else if (event.key === 'r') {
+      event.preventDefault();
+      this.openCriterionDialog('reject');
+    } else if (event.key === 's') {
+      event.preventDefault();
+      this.cycleSortField();
+    } else if (event.key === 't') {
+      event.preventDefault();
+      this.cycleVisibilityMode();
+    }
+  }
+
   setResearcher(id: string): void {
     this.researcherSvc.set(id || null);
+  }
+
+  setVisibilityMode(mode: VisibilityMode): void {
+    this.visibilityMode.set(mode);
+    this.showSelected.set(mode === 'selected' || mode === 'all');
+    this.showRejected.set(mode === 'rejected' || mode === 'all');
   }
 
   decisionFor(workId: string): Decision | undefined {
@@ -139,7 +202,71 @@ export class TriageComponent {
       criterion_id: criterion.id,
       note: this.noteFor(work.id) || null,
     };
+    this.rememberCriterion(body.verdict, criterion.id);
     this.putDecision(set.id, work.id, body, me);
+  }
+
+  selectWork(workId: string): void {
+    this.selectedWorkId.set(workId);
+  }
+
+  isSelectedWork(workId: string): boolean {
+    return this.selectedWork()?.id === workId;
+  }
+
+  openCriterionDialog(verdict: 'accept' | 'reject'): void {
+    const me = this.activeResearcherId();
+    if (!me) {
+      this.error.set('Select an active researcher first.');
+      return;
+    }
+    const work = this.selectedWork();
+    if (!work) return;
+    const criteria = verdict === 'accept' ? this.includeCriteria() : this.excludeCriteria();
+    if (!criteria.length) {
+      this.error.set(`No ${verdict === 'accept' ? 'include' : 'exclude'} criteria configured.`);
+      return;
+    }
+    this.selectedWorkId.set(work.id);
+    this.criterionDialog.set({ verdict, workId: work.id });
+    this.criterionQuery.set('');
+    this.highlightedCriterionIndex.set(0);
+    setTimeout(() => document.getElementById('criterion-search')?.focus());
+  }
+
+  closeCriterionDialog(): void {
+    this.criterionDialog.set(null);
+    this.criterionQuery.set('');
+    this.highlightedCriterionIndex.set(0);
+  }
+
+  updateCriterionQuery(query: string): void {
+    this.criterionQuery.set(query);
+    this.highlightedCriterionIndex.set(0);
+  }
+
+  moveHighlightedCriterion(delta: number): void {
+    const criteria = this.dialogCriteria();
+    if (!criteria.length) return;
+    this.highlightedCriterionIndex.update((i) => (i + delta + criteria.length) % criteria.length);
+  }
+
+  confirmCriterionDialog(): void {
+    const dialog = this.criterionDialog();
+    const set = this.currentSet();
+    const me = this.activeResearcherId();
+    if (!dialog || !set || !me) return;
+    const criteria = this.dialogCriteria();
+    const criterion = criteria[this.highlightedCriterionIndex()] ?? criteria[0];
+    if (!criterion) return;
+    const body: DecisionInput = {
+      verdict: dialog.verdict,
+      criterion_id: criterion.id,
+      note: this.noteFor(dialog.workId) || null,
+    };
+    this.rememberCriterion(dialog.verdict, criterion.id);
+    this.putDecision(set.id, dialog.workId, body, me);
+    this.closeCriterionDialog();
   }
 
   saveNote(work: Work): void {
@@ -185,6 +312,77 @@ export class TriageComponent {
 
   private findCriterion(id: string): Criterion | undefined {
     return this.project()?.criteria.find((c) => c.id === id);
+  }
+
+  private moveSelection(delta: number): void {
+    const works = this.filteredWorks();
+    if (!works.length) return;
+    const currentId = this.selectedWork()?.id;
+    const currentIndex = Math.max(0, works.findIndex((w) => w.id === currentId));
+    const next = works[Math.min(Math.max(currentIndex + delta, 0), works.length - 1)];
+    this.selectedWorkId.set(next.id);
+    this.scrollToWork(next.id);
+  }
+
+  private cycleSortField(): void {
+    const currentIndex = SORT_FIELDS.indexOf(this.sortField());
+    this.sortField.set(SORT_FIELDS[(currentIndex + 1) % SORT_FIELDS.length]);
+    setTimeout(() => {
+      const work = this.selectedWork();
+      if (work) this.scrollToWork(work.id);
+    });
+  }
+
+  private cycleVisibilityMode(): void {
+    const currentIndex = VISIBILITY_MODES.indexOf(this.visibilityMode());
+    this.setVisibilityMode(VISIBILITY_MODES[(currentIndex + 1) % VISIBILITY_MODES.length]);
+  }
+
+  private rememberCriterion(verdict: 'accept' | 'reject', criterionId: string): void {
+    this.lastCriterionByVerdict.update((last) => ({ ...last, [verdict]: criterionId }));
+  }
+
+  private sortDialogCriteria(criteria: Criterion[], verdict: 'accept' | 'reject'): Criterion[] {
+    const lastCriterionId = this.lastCriterionByVerdict()[verdict];
+    return [...criteria].sort((a, b) => {
+      if (a.id === lastCriterionId) return -1;
+      if (b.id === lastCriterionId) return 1;
+      return this.compareCriterion(a, b);
+    });
+  }
+
+  private compareCriterion(a: Criterion, b: Criterion): number {
+    const description = this.compareSortValue(a.description, b.description);
+    if (description !== 0) return description;
+    return this.compareSortValue(a.id, b.id);
+  }
+
+  private fuzzyScore(value: string, query: string): number | null {
+    const normalizedValue = value.toLocaleLowerCase();
+    const normalizedQuery = query.toLocaleLowerCase();
+    if (normalizedValue.includes(normalizedQuery)) return 0;
+    let score = 0;
+    let cursor = 0;
+    for (const char of normalizedQuery) {
+      const index = normalizedValue.indexOf(char, cursor);
+      if (index === -1) return null;
+      score += index - cursor + 1;
+      cursor = index + 1;
+    }
+    return score;
+  }
+
+  private isTypingTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    const tag = target.tagName.toLocaleLowerCase();
+    return target.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select';
+  }
+
+  private scrollToWork(workId: string): void {
+    document.getElementById(`work-${workId}`)?.scrollIntoView({
+      block: 'nearest',
+      behavior: 'smooth',
+    });
   }
 
   private sortWorks(works: Work[]): Work[] {
