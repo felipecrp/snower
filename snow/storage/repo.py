@@ -611,6 +611,17 @@ class ProjectRepo:
         if not source_work or not source_set:
             raise ValueError(f"Work {bib_key!r} not found in any set.")
 
+        decisions, _ = self.load_decisions(source_set.id)
+        votes = {"accept": 0, "reject": 0}
+        for d in decisions:
+            if d.work_id != source_work.id:
+                continue
+            votes["accept" if d.verdict == Verdict.ACCEPT else "reject"] += 1
+        if votes["accept"] <= votes["reject"]:
+            raise ValueError(
+                f"Snowballing only allowed for consensus-accepted papers; {bib_key!r} is not accepted.",
+            )
+
         direction = kind.value
         target_iteration = source_set.iteration + 1
         target_id = f"{target_iteration:02d}-{direction}"

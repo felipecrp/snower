@@ -11,6 +11,31 @@ export class ProjectService {
   readonly sets = signal<ReviewSet[]>([]);
   readonly allDecisions = signal<Record<string, Decision[]>>({});
   readonly error = signal<string | null>(null);
+  readonly pendingSetIds = signal<ReadonlySet<string>>(new Set());
+
+  markSetsPending(ids: Iterable<string>): void {
+    this.pendingSetIds.update((current) => {
+      const next = new Set(current);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+  }
+
+  clearSetsPending(ids: Iterable<string>): void {
+    this.pendingSetIds.update((current) => {
+      const next = new Set(current);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+  }
+
+  ensurePlaceholderSet(id: string, kind: ReviewSet['kind'], iteration: number): void {
+    this.sets.update((all) => {
+      if (all.some((s) => s.id === id)) return all;
+      const placeholder: ReviewSet = { id, kind, iteration, works: [] };
+      return [...all, placeholder].sort((a, b) => a.id.localeCompare(b.id));
+    });
+  }
 
   refresh(): void {
     this.api.getProject().subscribe({

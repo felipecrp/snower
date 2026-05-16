@@ -5,11 +5,13 @@
       <li
         *ngFor="let s of regularSets(); trackBy: trackById"
         [class.active]="currentSet()?.id === s.id"
+        [class.pending]="projectSvc.pendingSetIds().has(s.id)"
         (click)="selectSet(s)"
       >
         <span class="set-id">{{ s.id }}</span>
         <span class="set-kind">{{ s.kind }}</span>
         <span class="set-count">
+          <span *ngIf="projectSvc.pendingSetIds().has(s.id)" class="spinner" aria-hidden="true"></span>
           {{ consensusCountFor(s).accepted }}/{{ s.works.length }}
         </span>
       </li>
@@ -18,10 +20,14 @@
       <div class="orphan-label">Orphans</div>
       <li
         [class.active]="currentSet()?.id === os.id"
+        [class.pending]="projectSvc.pendingSetIds().has(os.id)"
         (click)="selectSet(os)"
       >
         <span class="set-id">orphan</span>
-        <span class="set-count">{{ os.works.length }}</span>
+        <span class="set-count">
+          <span *ngIf="projectSvc.pendingSetIds().has(os.id)" class="spinner" aria-hidden="true"></span>
+          {{ os.works.length }}
+        </span>
       </li>
     </div>
     <div class="sets-footer">
@@ -51,8 +57,16 @@
         <ng-container *ngIf="snowballMenuOpen()">
           <div class="snowball-backdrop" (click)="snowballMenuOpen.set(false)"></div>
           <div class="snowball-menu">
-            <button (click)="runSnowballing('backward-selected')">Backward selected</button>
-            <button (click)="runSnowballing('forward-selected')">Forward selected</button>
+            <button
+              (click)="runSnowballing('backward-selected')"
+              [disabled]="!selectedAccepted()"
+              [title]="selectedAccepted() ? '' : 'Only consensus-accepted papers can be snowballed'"
+            >Backward selected</button>
+            <button
+              (click)="runSnowballing('forward-selected')"
+              [disabled]="!selectedAccepted()"
+              [title]="selectedAccepted() ? '' : 'Only consensus-accepted papers can be snowballed'"
+            >Forward selected</button>
             <button (click)="runSnowballing('backward-remaining')">Backward remaining</button>
             <button (click)="runSnowballing('forward-remaining')">Forward remaining</button>
           </div>
@@ -135,10 +149,12 @@
           <div class="snowball-counts"
                *ngIf="!isWorkExpanded(w.id) && (w.last_backward_snowballed_at || w.last_forward_snowballed_at)">
             <span *ngIf="w.last_backward_snowballed_at" title="backward snowballing">
-              ← {{ w.last_backward_found ?? '?' }}
+              ← <ng-container *ngIf="isSnowballInFlight(w, 'backward'); else bwdCount"><span class="spinner inline" aria-hidden="true"></span></ng-container>
+              <ng-template #bwdCount>{{ w.last_backward_found ?? '?' }}</ng-template>
             </span>
             <span *ngIf="w.last_forward_snowballed_at" title="forward snowballing">
-              → {{ w.last_forward_found ?? '?' }}
+              → <ng-container *ngIf="isSnowballInFlight(w, 'forward'); else fwdCount"><span class="spinner inline" aria-hidden="true"></span></ng-container>
+              <ng-template #fwdCount>{{ w.last_forward_found ?? '?' }}</ng-template>
             </span>
           </div>
 

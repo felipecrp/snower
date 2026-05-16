@@ -9,18 +9,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException, UploadFile
 
 from snow.api.state import get_repo
 from snow.domain.models import Set, SetKind
-from snow.providers.openalex_provider import OpenAlexProvider
+from snow.providers.factory import get_provider
 from snow.storage import bib
 from snow.storage.repo import ProjectRepo
 
 router = APIRouter(prefix="/api/sets", tags=["sets"])
-
-
-def _openalex_provider(repo: ProjectRepo) -> OpenAlexProvider:
-    for cfg in repo.load_project().providers:
-        if cfg.enabled and cfg.name == "openalex":
-            return OpenAlexProvider(email=cfg.options.get("email") or None)
-    return OpenAlexProvider()
 
 
 @router.get("", response_model=list[Set])
@@ -76,7 +69,7 @@ async def import_bib(
         works = bib.load(tmp_path)
     finally:
         tmp_path.unlink(missing_ok=True)
-    works = _openalex_provider(repo).enrich_works(works)
+    works = get_provider(repo.load_project()).enrich_works(works)
     criteria = repo.load_project().criteria if x_researcher_id else None
     try:
         return repo.import_bib_to_set(set_id, works, criteria=criteria, researcher_id=x_researcher_id)

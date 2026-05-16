@@ -10,7 +10,7 @@ import uvicorn
 
 from snow.api.app import create_app
 from snow.domain.models import Project
-from snow.providers.openalex_provider import OpenAlexProvider
+from snow.providers.factory import get_provider
 from snow.storage import bib
 from snow.storage.repo import ProjectRepo
 
@@ -55,16 +55,7 @@ def import_bib(
     if not works:
         typer.echo(f"{bib_path}: parsed 0 entries — file may be empty or malformed.", err=True)
         raise typer.Exit(code=1)
-    project_config = repo.load_project()
-    email = next(
-        (
-            cfg.options.get("email")
-            for cfg in project_config.providers
-            if cfg.enabled and cfg.name == "openalex"
-        ),
-        None,
-    )
-    works = OpenAlexProvider(email=email or None).enrich_works(works)
+    works = get_provider(repo.load_project()).enrich_works(works)
     start = repo.import_start_set(works)
     typer.echo(f"Imported {len(start.works)} works into {start.id}")
 

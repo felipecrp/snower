@@ -20,3 +20,7 @@ class Provider(ABC):
     def fetch_citations(self, work: Work) -> list[BibliographicWork]:
         """Return works that cite `work` (forward snowballing)."""
         ...
+
+    def enrich_works(self, works: list[Work]) -> list[Work]:
+        """Fill missing bibliographic metadata. Default: noop."""
+        return list(works)

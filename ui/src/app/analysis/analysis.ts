@@ -42,6 +42,7 @@ export class AnalysisComponent {
   readonly importing = signal(false);
   readonly snowballRunning = signal(false);
   readonly snowballMenuOpen = signal(false);
+  readonly inFlightSnowball = signal<ReadonlySet<string>>(new Set());
 
   readonly resultsMode = signal(false);
   readonly showPending = signal(true);
@@ -121,6 +122,10 @@ export class AnalysisComponent {
 
   readonly regularSets = computed(() => this.sets().filter((s) => s.kind !== 'orphan'));
   readonly orphanSet = computed(() => this.sets().find((s) => s.kind === 'orphan') ?? null);
+  readonly selectedAccepted = computed(() => {
+    const w = this.selectedWork();
+    return !!w && this.consensusFor(w.id) === 'accept';
+  });
 
   private static readonly LAST_SET_KEY = 'snow:last-set';
   private setAutoSelected = false;
@@ -307,7 +312,7 @@ export class AnalysisComponent {
           );
           this.clearDraft(work.id);
           this.error.set(null);
-          this.reloadSets();
+          this.triggerOrphanRecalc();
         },
         error: (e) => this.error.set(`Failed to clear decision: ${e.message}`),
       });
@@ -335,16 +340,35 @@ export class AnalysisComponent {
     if (kind === 'backward-selected' || kind === 'forward-selected') {
       const work = this.selectedWork();
       if (!work) { this.error.set('Select a paper first.'); return; }
+      if (this.consensusFor(work.id) !== 'accept') {
+        this.error.set('Snowballing is only available for consensus-accepted papers.');
+        return;
+      }
       this.snowballRunning.set(true);
       const direction = kind === 'backward-selected' ? 'backward' : 'forward';
+      const sourceSet = this.currentSet();
+      const targetId = sourceSet
+        ? `${(sourceSet.iteration + 1).toString().padStart(2, '0')}-${direction}`
+        : null;
+      this.applyOptimisticSnowball(work, direction);
+      const pending: string[] = [];
+      if (targetId) {
+        this.projectSvc.ensurePlaceholderSet(targetId, direction, (sourceSet?.iteration ?? 0) + 1);
+        this.projectSvc.markSetsPending([targetId]);
+        pending.push(targetId);
+      }
       this.api.runPaperSnowballing(direction, work.bib_key).subscribe({
         next: (updatedSets) => {
           this.snowballRunning.set(false);
           this.syncSetsAfterSnowballing(updatedSets);
+          this.projectSvc.clearSetsPending(pending);
+          this.clearInFlightSnowball(work, direction);
         },
         error: (e) => {
           this.error.set(`Snowballing failed: ${e.error?.detail ?? e.message}`);
           this.snowballRunning.set(false);
+          this.projectSvc.clearSetsPending(pending);
+          this.clearInFlightSnowball(work, direction);
         },
       });
       return;
@@ -354,10 +378,16 @@ export class AnalysisComponent {
     const directions: Array<'backward' | 'forward'> =
       kind === 'both-remaining' ? ['backward', 'forward'] : [kind.split('-')[0] as 'backward' | 'forward'];
 
+    const pendingGlobal = this.sets()
+      .filter((s) => directions.includes(s.kind as 'backward' | 'forward'))
+      .map((s) => s.id);
+    this.projectSvc.markSetsPending(pendingGlobal);
+
     const runNext = (accumulated: ReviewSet[], remaining: typeof directions) => {
       if (!remaining.length) {
         this.snowballRunning.set(false);
         this.syncSetsAfterSnowballing(accumulated);
+        this.projectSvc.clearSetsPending(pendingGlobal);
         return;
       }
       const [head, ...tail] = remaining;
@@ -366,11 +396,40 @@ export class AnalysisComponent {
         error: (e) => {
           this.error.set(`Snowballing failed: ${e.error?.detail ?? e.message}`);
           this.snowballRunning.set(false);
+          this.projectSvc.clearSetsPending(pendingGlobal);
         },
       });
     };
 
     runNext([], directions);
+  }
+
+  private applyOptimisticSnowball(work: Work, direction: 'backward' | 'forward'): void {
+    const timestamp = new Date().toISOString();
+    const field = direction === 'backward'
+      ? 'last_backward_snowballed_at'
+      : 'last_forward_snowballed_at';
+    const updater = (w: Work) =>
+      w.id === work.id ? { ...w, [field]: timestamp } as Work : w;
+    this.currentSet.update((cs) => cs ? { ...cs, works: cs.works.map(updater) } : cs);
+    this.projectSvc.sets.update((all) =>
+      all.map((s) => ({ ...s, works: s.works.map(updater) })),
+    );
+    const key = `${direction}:${work.bib_key}`;
+    this.inFlightSnowball.update((set) => new Set(set).add(key));
+  }
+
+  clearInFlightSnowball(work: Work, direction: 'backward' | 'forward'): void {
+    const key = `${direction}:${work.bib_key}`;
+    this.inFlightSnowball.update((set) => {
+      const next = new Set(set);
+      next.delete(key);
+      return next;
+    });
+  }
+
+  isSnowballInFlight(work: Work, direction: 'backward' | 'forward'): boolean {
+    return this.inFlightSnowball().has(`${direction}:${work.bib_key}`);
   }
 
   private syncSetsAfterSnowballing(updatedSets: ReviewSet[]): void {
@@ -537,23 +596,52 @@ export class AnalysisComponent {
         this.selectFallbackIfHidden(workId, fallbackWorkId);
         this.clearDraft(workId);
         this.error.set(null);
-        this.reloadSets();
+        this.triggerOrphanRecalc();
       },
       error: (e) => this.error.set(`Failed to save decision: ${e.message}`),
     });
   }
 
-  private reloadSets(): void {
-    this.api.listSets().subscribe({
-      next: (sets) => {
-        this.projectSvc.sets.set(sets);
-        const cs = this.currentSet();
-        if (cs) {
-          const updated = sets.find((s) => s.id === cs.id);
-          if (updated) this.currentSet.set(updated);
-        }
+  private orphanRecalcInFlight = false;
+  private orphanRecalcPending = false;
+
+  private triggerOrphanRecalc(): void {
+    if (this.orphanRecalcInFlight) {
+      this.orphanRecalcPending = true;
+      return;
+    }
+    this.startOrphanRecalc();
+  }
+
+  private startOrphanRecalc(): void {
+    this.orphanRecalcInFlight = true;
+    const affected = this.sets()
+      .filter((s) => s.kind === 'backward' || s.kind === 'forward' || s.kind === 'orphan')
+      .map((s) => s.id);
+    this.projectSvc.markSetsPending([...affected, 'orphan']);
+    this.api.recalculateOrphans().subscribe({
+      next: (sets) => this.finishOrphanRecalc(sets, affected),
+      error: (e) => {
+        this.error.set(`Failed to recalculate orphans: ${e.message}`);
+        this.projectSvc.clearSetsPending([...affected, 'orphan']);
+        this.orphanRecalcInFlight = false;
       },
     });
+  }
+
+  private finishOrphanRecalc(sets: ReviewSet[], affected: string[]): void {
+    this.projectSvc.sets.set(sets);
+    const cs = this.currentSet();
+    if (cs) {
+      const updated = sets.find((s) => s.id === cs.id);
+      if (updated) this.currentSet.set(updated);
+    }
+    this.projectSvc.clearSetsPending([...affected, 'orphan']);
+    this.orphanRecalcInFlight = false;
+    if (this.orphanRecalcPending) {
+      this.orphanRecalcPending = false;
+      this.startOrphanRecalc();
+    }
   }
 
   private clearDraft(workId: string): void {

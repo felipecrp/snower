@@ -96,6 +96,10 @@ export class ApiService {
     );
   }
 
+  recalculateOrphans(): Observable<ReviewSet[]> {
+    return this.http.post<ReviewSet[]>('/api/orphans/recalculate', {});
+  }
+
   deleteDecision(setId: string, workId: string): Observable<void> {
     return this.http.delete<void>(
       `/api/sets/${setId}/decisions/${encodeURIComponent(workId)}`,

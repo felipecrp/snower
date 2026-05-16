@@ -55,7 +55,6 @@ def upsert_decision(
         decided_at=datetime.now(timezone.utc),
     )
     repo.save_researcher_decision(set_id, new_decision)
-    repo.recalculate_orphans()
     return new_decision
 
 
@@ -68,4 +67,3 @@ def delete_decision(
 ) -> None:
     _ensure_set_exists(repo, set_id)
     repo.delete_researcher_decision(set_id, work_id, researcher.id)
-    repo.recalculate_orphans()
