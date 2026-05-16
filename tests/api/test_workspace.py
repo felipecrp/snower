@@ -36,3 +36,19 @@ class DescribeWorkspaceWithoutProject:
         body = client.get("/api/workspace").json()
         assert body is not None
         assert body["name"] == "demo"
+
+    def it_ensures_start_set_when_opening_a_bare_project(self, tmp_path: Path):
+        from snow.domain.models import Project
+        from snow.storage import yml
+        # Hand-rolled "bare" project on disk: only project.yml, no sets/.
+        root = tmp_path / "bare"
+        root.mkdir()
+        yml.dump(Project(name="bare").model_dump(mode="json", exclude_none=True), root / "project.yml")
+        assert not (root / "sets" / "00-start").exists()
+
+        client = TestClient(create_app(None))
+        r = client.post("/api/workspace/open", json={"path": str(root)})
+        assert r.status_code == 200
+        assert (root / "sets" / "00-start" / "set.yml").exists()
+        sets = client.get("/api/sets").json()
+        assert any(s["id"] == "00-start" for s in sets)

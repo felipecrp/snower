@@ -890,8 +890,12 @@ class ProjectRepo:
 
     def init(self, project: Project) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
-        self.sets_dir().mkdir(exist_ok=True)
         self.save_project(project)
+        self.ensure_scaffolding()
+
+    def ensure_scaffolding(self) -> None:
+        """Idempotently create the directory layout and the empty start set."""
+        self.sets_dir().mkdir(parents=True, exist_ok=True)
         if not self.relations_path().exists():
             self.save_relations([])
         if not self.set_dir("00-start").root.exists():

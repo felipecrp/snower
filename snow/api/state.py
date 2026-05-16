@@ -22,10 +22,13 @@ class ApiState:
         if project_root is not None:
             candidate = ProjectRepo(project_root)
             if candidate.project_path().exists():
+                candidate.ensure_scaffolding()
                 self.repo = candidate
 
     def switch(self, new_root: Path) -> None:
-        self.repo = ProjectRepo(new_root)
+        repo = ProjectRepo(new_root)
+        repo.ensure_scaffolding()
+        self.repo = repo
 
 
 def get_state(request: Request) -> ApiState:
