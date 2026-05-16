@@ -41,6 +41,8 @@ export interface Work {
   abstract?: string | null;
   last_backward_snowballed_at?: string | null;
   last_forward_snowballed_at?: string | null;
+  last_backward_found?: number | null;
+  last_forward_found?: number | null;
 }
 
 export interface ReviewSet {

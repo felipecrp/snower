@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import typer
@@ -57,6 +58,21 @@ def import_bib(
     typer.echo(f"Imported {len(start.works)} works into {start.id}")
 
 
+def _configure_logging(project_root: Path) -> None:
+    fmt = logging.Formatter("%(asctime)s %(levelname)-8s %(name)s — %(message)s")
+    snow_logger = logging.getLogger("snow")
+    snow_logger.setLevel(logging.INFO)
+
+    stream = logging.StreamHandler()
+    stream.setFormatter(fmt)
+    snow_logger.addHandler(stream)
+
+    log_file = project_root / "snow.log"
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setFormatter(fmt)
+    snow_logger.addHandler(file_handler)
+
+
 @app.command()
 def serve(
     project: Path = typer.Option(Path("."), "--project", "-p", help="Project directory."),
@@ -69,6 +85,7 @@ def serve(
     if not repo.project_path().exists():
         typer.echo(f"No snow project at {project} — run `snow init` first.", err=True)
         raise typer.Exit(code=1)
+    _configure_logging(project)
     fastapi_app = create_app(project)
     uvicorn.run(fastapi_app, host=host, port=port, reload=reload)
 

@@ -160,15 +160,24 @@ class ProjectRepo:
     def snowballing_path(self) -> Path:
         return self.root / SNOWBALLING_FILE
 
-    def load_snowball_log(self) -> dict[str, dict[str, str]]:
-        """Returns {direction: {work_id: iso_timestamp}}."""
-        data = yml.load(self.snowballing_path()) or {}
-        return {
-            "backward": dict(data.get("backward", {})),
-            "forward": dict(data.get("forward", {})),
-        }
+    def load_snowball_log(self) -> dict[str, dict[str, dict]]:
+        """Returns {direction: {bib_key: {at: iso_str, found: int | None}}}.
 
-    def save_snowball_log(self, log: dict[str, dict[str, str]]) -> None:
+        Handles the legacy format where values were plain ISO timestamp strings.
+        """
+        data = yml.load(self.snowballing_path()) or {}
+        result: dict[str, dict[str, dict]] = {}
+        for direction in ("backward", "forward"):
+            entries: dict[str, dict] = {}
+            for key, value in dict(data.get(direction) or {}).items():
+                if isinstance(value, str):
+                    entries[key] = {"at": value, "found": None}
+                else:
+                    entries[key] = {"at": value.get("at", ""), "found": value.get("found")}
+            result[direction] = entries
+        return result
+
+    def save_snowball_log(self, log: dict[str, dict[str, dict]]) -> None:
         yml.dump({"backward": log.get("backward", {}), "forward": log.get("forward", {})}, self.snowballing_path())
 
     def _merge_snowball_timestamps(self, works: list[Work]) -> None:
@@ -176,10 +185,14 @@ class ProjectRepo:
         bwd = log.get("backward", {})
         fwd = log.get("forward", {})
         for work in works:
-            if work.id in bwd:
-                work.last_backward_snowballed_at = datetime.fromisoformat(bwd[work.id])
-            if work.id in fwd:
-                work.last_forward_snowballed_at = datetime.fromisoformat(fwd[work.id])
+            if work.bib_key in bwd:
+                entry = bwd[work.bib_key]
+                work.last_backward_snowballed_at = datetime.fromisoformat(entry["at"])
+                work.last_backward_found = entry.get("found")
+            if work.bib_key in fwd:
+                entry = fwd[work.bib_key]
+                work.last_forward_snowballed_at = datetime.fromisoformat(entry["at"])
+                work.last_forward_found = entry.get("found")
 
     def run_global_snowballing(self, kind: SetKind, provider) -> list[Set]:  # type: ignore[type-arg]
         """Fetch references (backward) or citations (forward) for all accepted works
@@ -196,23 +209,47 @@ class ProjectRepo:
         direction = kind.value  # "backward" or "forward"
         already_done: dict[str, str] = log.setdefault(direction, {})
 
+        logger.info("Starting %s snowballing — %d set(s) found", direction, len(all_sets))
+
         # All work_ids already present across all sets (for deduplication)
         all_known_ids: set[str] = {w.id for s in all_sets for w in s.works}
 
-        # Group accepted, not-yet-snowballed works by their set's iteration
+        # Group consensus-accepted, not-yet-snowballed works by their set's iteration
         to_process: dict[int, list[Work]] = defaultdict(list)
         for s in all_sets:
             decisions, _ = self.load_decisions(s.id)
-            accepted_ids = {d.work_id for d in decisions if d.verdict == Verdict.ACCEPT}
+            vote_counts: dict[str, dict[str, int]] = defaultdict(lambda: {"accept": 0, "reject": 0})
+            for d in decisions:
+                key = "accept" if d.verdict == Verdict.ACCEPT else "reject"
+                vote_counts[d.work_id][key] += 1
+            accepted_ids = {wid for wid, v in vote_counts.items() if v["accept"] > v["reject"]}
+
+            n_accepted = n_done = n_queued = 0
             for work in s.works:
-                if work.id in accepted_ids and work.id not in already_done:
+                if work.id not in accepted_ids:
+                    pass
+                elif work.bib_key in already_done:
+                    n_done += 1
+                else:
+                    n_queued += 1
                     to_process[s.iteration].append(work)
+            n_accepted = len(accepted_ids)
+            logger.info(
+                "  %s: %d work(s) total — %d consensus-accepted, %d already snowballed, %d queued",
+                s.id, len(s.works), n_accepted, n_done, n_queued,
+            )
 
         if not to_process:
+            logger.info("Nothing to do — no eligible papers for %s snowballing", direction)
             return []
 
         updated_sets: list[Set] = []
         now_iso = datetime.now(tz=timezone.utc).isoformat()
+
+        existing_relations = self.load_relations()
+        known_edges: set[tuple[str, str]] = {(r.citing_bib_key, r.cited_bib_key) for r in existing_relations}
+        # Collect raw edges as work_id pairs; converted to bib_keys after save_set.
+        pending_edges: list[tuple[str, str]] = []  # (citing_work_id, cited_work_id)
 
         for iteration, works in sorted(to_process.items()):
             target_iteration = iteration + 1
@@ -221,6 +258,7 @@ class ProjectRepo:
             try:
                 target_set = self.load_set(target_id)
                 target_known = {w.id for w in target_set.works}
+                logger.info("Updating existing set %s", target_id)
             except FileNotFoundError:
                 target_set = Set(
                     id=target_id,
@@ -229,6 +267,7 @@ class ProjectRepo:
                     works=[],
                 )
                 target_known = set()
+                logger.info("Creating new set %s", target_id)
 
             new_works: list[Work] = []
             for work in works:
@@ -241,12 +280,19 @@ class ProjectRepo:
                     logger.error("Provider error for '%s': %s", work.title, exc)
                     refs = []
 
+                added = 0
                 for ref in refs:
                     wid = compute_work_id(ref)
+                    if kind == SetKind.BACKWARD:
+                        pending_edges.append((work.id, wid))
+                    else:
+                        pending_edges.append((wid, work.id))
+
                     if wid in all_known_ids or wid in target_known:
                         continue
                     all_known_ids.add(wid)
                     target_known.add(wid)
+                    added += 1
                     new_works.append(
                         Work(
                             id=wid,
@@ -258,13 +304,43 @@ class ProjectRepo:
                         )
                     )
 
-                already_done[work.id] = now_iso
+                if refs:
+                    logger.info(
+                        "  %s: %d fetched — %d new, %d duplicate(s)",
+                        work.bib_key, len(refs), added, len(refs) - added,
+                    )
+                else:
+                    logger.warning("  %s: 0 results from provider", work.bib_key)
 
+                already_done[work.bib_key] = {"at": now_iso, "found": len(refs)}
+
+            logger.info("  → %d new work(s) added to %s", len(new_works), target_id)
             target_set.works.extend(new_works)
-            self.save_set(target_set)
+            self.save_set(target_set)  # assigns bib_keys via _renormalize_keys
             updated_sets.append(self.load_set(target_id))
 
+        # Convert work_id edges to bib_key edges using the now-complete keys registry.
+        id_to_key: dict[str, str] = {wid: key for key, wid in self.load_keys().items()}
+        new_relations: list[Relation] = []
+        for citing_id, cited_id in pending_edges:
+            citing_key = id_to_key.get(citing_id)
+            cited_key = id_to_key.get(cited_id)
+            if not citing_key or not cited_key:
+                continue
+            edge = (citing_key, cited_key)
+            if edge in known_edges:
+                continue
+            known_edges.add(edge)
+            new_relations.append(Relation(citing_bib_key=citing_key, cited_bib_key=cited_key))
+
+        logger.info(
+            "%s snowballing done — %d set(s) updated",
+            direction.capitalize(), len(updated_sets),
+        )
         self.save_snowball_log(log)
+        if new_relations:
+            self.save_relations(existing_relations + new_relations)
+            logger.info("%d new relation(s) saved to relations.yml", len(new_relations))
         return updated_sets
 
     # --- decisions ------------------------------------------------------
@@ -339,11 +415,24 @@ class ProjectRepo:
 
     def load_relations(self) -> list[Relation]:
         data = yml.load(self.relations_path()) or {}
-        return [Relation.model_validate(r) for r in data.get("relations", [])]
+        relations: list[Relation] = []
+        seen: set[tuple[str, str]] = set()
+        for entry in data.get("relations") or []:
+            for bib_key, connections in entry.items():
+                for cited in connections.get("cite") or []:
+                    edge = (bib_key, cited)
+                    if edge not in seen:
+                        seen.add(edge)
+                        relations.append(Relation(citing_bib_key=bib_key, cited_bib_key=cited))
+        return relations
 
     def save_relations(self, relations: list[Relation]) -> None:
-        data = {"relations": [r.model_dump(mode="json") for r in relations]}
-        yml.dump(data, self.relations_path())
+        grouped: dict[str, dict[str, list[str]]] = {}
+        for r in relations:
+            grouped.setdefault(r.citing_bib_key, {"cite": [], "cited_by": []})["cite"].append(r.cited_bib_key)
+            grouped.setdefault(r.cited_bib_key, {"cite": [], "cited_by": []})["cited_by"].append(r.citing_bib_key)
+        entries = [{key: val} for key, val in sorted(grouped.items())]
+        yml.dump({"relations": entries}, self.relations_path())
 
     # --- bootstrap ------------------------------------------------------
 

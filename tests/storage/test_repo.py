@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from snow.domain.identity import WorkRef
 from snow.domain.models import (
     Criterion,
     CriterionKind,
@@ -11,11 +12,37 @@ from snow.domain.models import (
     Relation,
     Researcher,
     Resolution,
+    Set as ReviewSet,
     SetKind,
     Verdict,
     Work,
 )
 from snow.storage.repo import ProjectRepo
+
+
+class FakeProvider:
+    def __init__(self, refs=None, cites=None):
+        self.refs = refs or {}
+        self.cites = cites or {}
+
+    def fetch_references(self, work):
+        return self.refs.get(work.id, [])
+
+    def fetch_citations(self, work):
+        return self.cites.get(work.id, [])
+
+
+def _decision(work_id, researcher_id, verdict):
+    return Decision(
+        work_id=work_id,
+        researcher_id=researcher_id,
+        verdict=verdict,
+        decided_at=datetime(2026, 1, 1),
+    )
+
+
+def _ref(title, doi=None):
+    return WorkRef(title=title, year=2020, authors=("Doe, J",), doi=doi)
 
 
 @pytest.fixture
@@ -214,3 +241,123 @@ class DescribeProjectRepoRelations:
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)
         assert repo.load_relations() == []
+
+
+class DescribeRunGlobalSnowballing:
+    def it_creates_backward_set_from_accepted_start_papers(
+        self, tmp_path: Path, project: Project, sample_works: list[Work]
+    ):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        repo.import_start_set(sample_works)
+        repo.save_decisions("00-start", [_decision("doi:10/a", "r1", Verdict.ACCEPT)])
+        provider = FakeProvider(refs={"doi:10/a": [_ref("Ref Paper", doi="10/ref")]})
+
+        updated = repo.run_global_snowballing(SetKind.BACKWARD, provider)
+
+        assert len(updated) == 1
+        assert updated[0].id == "01-backward"
+        assert updated[0].iteration == 1
+        assert len(updated[0].works) == 1
+        assert updated[0].works[0].title == "Ref Paper"
+
+    def it_creates_forward_set_from_accepted_start_papers(
+        self, tmp_path: Path, project: Project, sample_works: list[Work]
+    ):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        repo.import_start_set(sample_works)
+        repo.save_decisions("00-start", [_decision("doi:10/a", "r1", Verdict.ACCEPT)])
+        provider = FakeProvider(cites={"doi:10/a": [_ref("Citing Paper", doi="10/cite")]})
+
+        updated = repo.run_global_snowballing(SetKind.FORWARD, provider)
+
+        assert len(updated) == 1
+        assert updated[0].id == "01-forward"
+
+    def it_skips_papers_rejected_by_majority(
+        self, tmp_path: Path, project: Project, sample_works: list[Work]
+    ):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        repo.import_start_set(sample_works)
+        # Tie (1 accept, 1 reject) → not accepted
+        repo.save_decisions("00-start", [
+            _decision("doi:10/a", "r1", Verdict.ACCEPT),
+            _decision("doi:10/a", "r2", Verdict.REJECT),
+        ])
+        provider = FakeProvider(refs={"doi:10/a": [_ref("Should Not Appear")]})
+
+        updated = repo.run_global_snowballing(SetKind.BACKWARD, provider)
+
+        assert updated == []
+
+    def it_skips_papers_with_no_decisions(
+        self, tmp_path: Path, project: Project, sample_works: list[Work]
+    ):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        repo.import_start_set(sample_works)
+        provider = FakeProvider(refs={"doi:10/a": [_ref("Should Not Appear")]})
+
+        updated = repo.run_global_snowballing(SetKind.BACKWARD, provider)
+
+        assert updated == []
+
+    def it_merges_papers_from_same_iteration_into_one_target_set(
+        self, tmp_path: Path, project: Project
+    ):
+        """Papers from backward-1 and forward-1 (both iteration=1) feed into backward-2."""
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+
+        paper_bwd = Work(id="doi:10/bwd", bib_key="", title="BWD", authors=["A, A"], year=2020, doi="10/bwd")
+        paper_fwd = Work(id="doi:10/fwd", bib_key="", title="FWD", authors=["B, B"], year=2021, doi="10/fwd")
+        repo.save_set(ReviewSet(id="01-backward", kind=SetKind.BACKWARD, iteration=1, works=[paper_bwd]))
+        repo.save_set(ReviewSet(id="01-forward", kind=SetKind.FORWARD, iteration=1, works=[paper_fwd]))
+        repo.save_decisions("01-backward", [_decision("doi:10/bwd", "r1", Verdict.ACCEPT)])
+        repo.save_decisions("01-forward", [_decision("doi:10/fwd", "r1", Verdict.ACCEPT)])
+
+        provider = FakeProvider(refs={
+            "doi:10/bwd": [_ref("Ref from BWD", doi="10/rbwd")],
+            "doi:10/fwd": [_ref("Ref from FWD", doi="10/rfwd")],
+        })
+
+        updated = repo.run_global_snowballing(SetKind.BACKWARD, provider)
+
+        assert len(updated) == 1
+        assert updated[0].id == "02-backward"
+        titles = {w.title for w in updated[0].works}
+        assert titles == {"Ref from BWD", "Ref from FWD"}
+
+    def it_does_not_re_snowball_already_snowballed_papers(
+        self, tmp_path: Path, project: Project, sample_works: list[Work]
+    ):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        repo.import_start_set(sample_works)
+        repo.save_decisions("00-start", [_decision("doi:10/a", "r1", Verdict.ACCEPT)])
+        provider = FakeProvider(refs={"doi:10/a": [_ref("Ref", doi="10/ref")]})
+
+        repo.run_global_snowballing(SetKind.BACKWARD, provider)
+        updated2 = repo.run_global_snowballing(SetKind.BACKWARD, provider)
+
+        assert updated2 == []
+
+    def it_deduplicates_results_from_multiple_sources(
+        self, tmp_path: Path, project: Project, sample_works: list[Work]
+    ):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        repo.import_start_set(sample_works)
+        repo.save_decisions("00-start", [
+            _decision("doi:10/a", "r1", Verdict.ACCEPT),
+            _decision("doi:10/b", "r1", Verdict.ACCEPT),
+        ])
+        shared_ref = _ref("Shared Ref", doi="10/shared")
+        provider = FakeProvider(refs={"doi:10/a": [shared_ref], "doi:10/b": [shared_ref]})
+
+        updated = repo.run_global_snowballing(SetKind.BACKWARD, provider)
+
+        assert len(updated) == 1
+        assert len(updated[0].works) == 1

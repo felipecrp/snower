@@ -12,12 +12,15 @@ For high-volume use, configure a proxy via scholarly.use_proxy().
 from __future__ import annotations
 
 import logging
+import time
 
 from snow.domain.identity import WorkRef
 from snow.domain.models import Work
 from .base import Provider
 
 logger = logging.getLogger(__name__)
+
+_REQUEST_DELAY = 2.0  # seconds between Scholar requests
 
 
 def _to_work_ref(bib: dict) -> WorkRef | None:
@@ -37,19 +40,23 @@ def _to_work_ref(bib: dict) -> WorkRef | None:
 class ScholarlyProvider(Provider):
     """Fetches references and citations from Google Scholar."""
 
-    def _find_pub(self, work: Work):
+    def _scholarly(self):
         try:
-            import scholarly  # type: ignore[import-untyped]
+            from scholarly import scholarly  # type: ignore[import-untyped]
+            return scholarly
         except ImportError:
             raise RuntimeError("Install 'scholarly' to use the Google Scholar provider.")
 
+    def _find_pub(self, work: Work):
+        s = self._scholarly()
         query = work.title
         if work.authors:
             # First author surname improves precision
             query += " " + work.authors[0].split(",")[0].strip()
 
+        time.sleep(_REQUEST_DELAY)
         try:
-            pub = next(scholarly.search_pubs(query))
+            pub = next(s.search_pubs(query))
         except StopIteration:
             logger.warning("No Scholar result for: %s", work.title)
             return None
@@ -60,14 +67,14 @@ class ScholarlyProvider(Provider):
         return pub
 
     def fetch_references(self, work: Work) -> list[WorkRef]:
-        import scholarly  # type: ignore[import-untyped]
-
+        s = self._scholarly()
         pub = self._find_pub(work)
         if pub is None:
             return []
 
+        time.sleep(_REQUEST_DELAY)
         try:
-            filled = scholarly.fill(pub, sections=["references"])
+            filled = s.fill(pub, sections=["references"])
         except Exception as exc:
             logger.error("Could not fetch references for '%s': %s", work.title, exc)
             return []
@@ -81,15 +88,15 @@ class ScholarlyProvider(Provider):
         return refs
 
     def fetch_citations(self, work: Work) -> list[WorkRef]:
-        import scholarly  # type: ignore[import-untyped]
-
+        s = self._scholarly()
         pub = self._find_pub(work)
         if pub is None:
             return []
 
         refs: list[WorkRef] = []
+        time.sleep(_REQUEST_DELAY)
         try:
-            for citing in scholarly.citedby(pub):
+            for citing in s.citedby(pub):
                 bib = citing.get("bib", {})
                 work_ref = _to_work_ref(bib)
                 if work_ref:

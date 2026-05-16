@@ -194,6 +194,16 @@
 
   header { padding-right: 11rem; }
 
+  .snowball-counts {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    color: #6b7280;
+
+    span { white-space: nowrap; }
+  }
+
   .abstract {
     font-size: 0.9rem;
     color: #374151;

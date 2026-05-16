@@ -69,6 +69,8 @@ class Work(BaseModel):
     extra: dict[str, str] = Field(default_factory=dict)
     last_backward_snowballed_at: datetime | None = None
     last_forward_snowballed_at: datetime | None = None
+    last_backward_found: int | None = None
+    last_forward_found: int | None = None
 
 
 class Set(BaseModel):
@@ -101,7 +103,7 @@ class Resolution(BaseModel):
 
 
 class Relation(BaseModel):
-    """A directed citation edge: `citing_work_id` cites `cited_work_id`."""
+    """A directed citation edge: `citing_bib_key` cites `cited_bib_key`."""
 
-    citing_work_id: str
-    cited_work_id: str
+    citing_bib_key: str
+    cited_bib_key: str

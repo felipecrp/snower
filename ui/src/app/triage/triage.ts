@@ -167,19 +167,13 @@ export class TriageComponent {
     });
   }
 
-  startSnowballing(kind: 'backward' | 'forward'): void {
-    this.api.runGlobalSnowballing(kind).subscribe({
-      next: (created) => {
-        this.sets.update((existing) => {
-          const createdIds = new Set(created.map((s) => s.id));
-          return [...existing.filter((s) => !createdIds.has(s.id)), ...created].sort((a, b) =>
-            a.id.localeCompare(b.id),
-          );
-        });
-        if (created.length) this.selectSet(created[created.length - 1]);
+  startSnowballing(): void {
+    this.api.runSnowballing().subscribe({
+      next: () => {
         this.error.set(null);
+        this.refresh();
       },
-      error: (e) => this.error.set(`Failed to run ${kind} snowballing: ${e.message}`),
+      error: (e) => this.error.set(`Failed to run snowballing: ${e.message}`),
     });
   }
 

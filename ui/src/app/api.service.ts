@@ -45,6 +45,10 @@ export class ApiService {
     return this.http.post<ReviewSet>(`/api/sets/${setId}/snowballing/${kind}`, {});
   }
 
+  runSnowballing(): Observable<ReviewSet[]> {
+    return this.http.post<ReviewSet[]>('/api/snowballing', {});
+  }
+
   runGlobalSnowballing(kind: Exclude<SetKind, 'start'>): Observable<ReviewSet[]> {
     return this.http.post<ReviewSet[]>(`/api/snowballing/${kind}`, {});
   }

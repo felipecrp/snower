@@ -38,8 +38,7 @@
     </li>
   </ul>
   <div class="snowballing-actions">
-    <button type="button" (click)="startSnowballing('backward')">Backward</button>
-    <button type="button" (click)="startSnowballing('forward')">Forward</button>
+    <button type="button" (click)="startSnowballing()">Snowballing</button>
   </div>
 </aside>
 
@@ -105,6 +104,18 @@
           <span class="badge reject">{{ votes.rejected }} rejected</span>
         </div>
       </header>
+
+      <div class="snowball-counts"
+           *ngIf="w.last_backward_snowballed_at || w.last_forward_snowballed_at">
+        <span *ngIf="w.last_backward_snowballed_at"
+              title="backward snowballing">
+          ← {{ w.last_backward_found ?? '?' }}
+        </span>
+        <span *ngIf="w.last_forward_snowballed_at"
+              title="forward snowballing">
+          → {{ w.last_forward_found ?? '?' }}
+        </span>
+      </div>
 
       <p class="abstract" *ngIf="w.abstract">{{ w.abstract }}</p>
 
