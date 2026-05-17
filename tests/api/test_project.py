@@ -39,6 +39,28 @@ class DescribeReplaceResearchers:
         )
         assert r.status_code == 400
 
+    def it_rejects_invalid_emails(self, client: TestClient):
+        r = client.put(
+            "/api/project/researchers",
+            json=[{"email": "aliceexample.com", "name": "Alice"}],
+        )
+        assert r.status_code == 400
+
+    def it_sorts_by_name_after_save(self, client: TestClient):
+        r = client.put(
+            "/api/project/researchers",
+            json=[
+                {"email": "zoe@example.com", "name": "Zoe"},
+                {"email": "alice@example.com", "name": "Alice"},
+                {"email": "bob@example.com", "name": "Bob"},
+            ],
+        )
+        assert r.status_code == 200
+        assert [item["name"] for item in r.json()] == ["Alice", "Bob", "Zoe"]
+
+        body = client.get("/api/project").json()
+        assert [item["name"] for item in body["researchers"]] == ["Alice", "Bob", "Zoe"]
+
 
 class DescribeReplaceCriteria:
     def it_replaces_the_list(self, client: TestClient):
@@ -61,6 +83,32 @@ class DescribeReplaceCriteria:
             ],
         )
         assert r.status_code == 400
+
+    def it_sorts_include_before_exclude_then_by_id(self, client: TestClient):
+        r = client.put(
+            "/api/project/criteria",
+            json=[
+                {"id": "z1", "kind": "exclude", "description": "z"},
+                {"id": "b1", "kind": "include", "description": "b"},
+                {"id": "a1", "kind": "include", "description": "a"},
+                {"id": "a2", "kind": "exclude", "description": "a2"},
+            ],
+        )
+        assert r.status_code == 200
+        assert [(item["kind"], item["id"]) for item in r.json()] == [
+            ("include", "a1"),
+            ("include", "b1"),
+            ("exclude", "a2"),
+            ("exclude", "z1"),
+        ]
+
+        body = client.get("/api/project").json()
+        assert [(item["kind"], item["id"]) for item in body["criteria"]] == [
+            ("include", "a1"),
+            ("include", "b1"),
+            ("exclude", "a2"),
+            ("exclude", "z1"),
+        ]
 
 
 def _seed_decision(project_dir, researcher_id: str = "alice@example.com", criterion_id: str | None = "inc1"):
@@ -188,6 +236,21 @@ class DescribeReplacePhases:
         r = client.put("/api/project/phases", json=[])
         assert r.status_code == 200
         assert client.get("/api/project").json()["phases"] == []
+
+    def it_sorts_by_id_after_save(self, client: TestClient):
+        r = client.put(
+            "/api/project/phases",
+            json=[
+                {"id": "z2", "description": "Z"},
+                {"id": "a1", "description": "A"},
+                {"id": "m3", "description": "M"},
+            ],
+        )
+        assert r.status_code == 200
+        assert [item["id"] for item in r.json()] == ["a1", "m3", "z2"]
+
+        body = client.get("/api/project").json()
+        assert [item["id"] for item in body["phases"]] == ["a1", "m3", "z2"]
 
 
 def _seed_decision_with_phase(

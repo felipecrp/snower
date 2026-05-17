@@ -29,6 +29,7 @@ interface PhaseRow extends Phase {
 }
 
 type Dialog = 'new' | 'open' | null;
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 @Component({
   selector: 'app-project',
@@ -85,9 +86,9 @@ export class ProjectComponent {
       next: (p) => {
         this.projectName.set(p.name);
         this.projectDescription.set(p.description ?? '');
-        this.researchers.set(p.researchers.map((r) => ({ ...r, originalEmail: r.email })));
-        this.criteria.set(p.criteria.map((c) => ({ ...c, originalId: c.id })));
-        this.phases.set(p.phases.map((ph) => ({ ...ph, originalId: ph.id })));
+        this.researchers.set(this.sortResearcherRows(p.researchers.map((r) => ({ ...r, originalEmail: r.email }))));
+        this.criteria.set(this.sortCriterionRows(p.criteria.map((c) => ({ ...c, originalId: c.id }))));
+        this.phases.set(this.sortPhaseRows(p.phases.map((ph) => ({ ...ph, originalId: ph.id }))));
       },
       error: (e) => {
         if (e.status !== 409) this.error.set(`Failed to load project: ${e.message}`);
@@ -181,14 +182,34 @@ export class ProjectComponent {
       this.error.set('Each researcher needs an email and a name.');
       return;
     }
+    if (rows.some((r) => !EMAIL_RE.test(r.email))) {
+      this.error.set('Each researcher email must contain @ and .');
+      return;
+    }
     const payload: ResearcherInput[] = rows.map((r) => ({
       email: r.email,
       name: r.name,
       ...(r.originalEmail && r.originalEmail !== r.email ? { previous_email: r.originalEmail } : {}),
     }));
+    const previousToNext = new Map(
+      rows
+        .filter((r) => r.originalEmail)
+        .map((r) => [r.originalEmail, r.email]),
+    );
     this.api.replaceResearchers(payload).subscribe({
       next: (saved) => {
-        this.researchers.set(saved.map((r) => ({ ...r, originalEmail: r.email })));
+        const sorted = this.sortResearchers(saved);
+        this.researchers.set(sorted.map((r) => ({ ...r, originalEmail: r.email })));
+        this.projectSvc.project.update((project) => project ? { ...project, researchers: sorted } : project);
+        const active = this.researcherSvc.activeId();
+        if (active) {
+          const nextActive = previousToNext.get(active) ?? active;
+          if (!sorted.some((r) => r.email === nextActive)) {
+            this.researcherSvc.set(null);
+          } else if (nextActive !== active) {
+            this.researcherSvc.set(nextActive);
+          }
+        }
         this.saved.set('Researchers saved.');
       },
       error: (e) => this.error.set(`Failed to save researchers: ${this.errorMessage(e)}`),
@@ -227,7 +248,9 @@ export class ProjectComponent {
     }));
     this.api.replaceCriteria(payload).subscribe({
       next: (saved) => {
-        this.criteria.set(saved.map((c) => ({ ...c, originalId: c.id })));
+        const sorted = this.sortCriteria(saved);
+        this.criteria.set(sorted.map((c) => ({ ...c, originalId: c.id })));
+        this.projectSvc.project.update((project) => project ? { ...project, criteria: sorted } : project);
         this.saved.set('Criteria saved.');
       },
       error: (e) => this.error.set(`Failed to save criteria: ${this.errorMessage(e)}`),
@@ -264,11 +287,47 @@ export class ProjectComponent {
     }));
     this.api.replacePhases(payload).subscribe({
       next: (saved) => {
-        this.phases.set(saved.map((p) => ({ ...p, originalId: p.id })));
+        const sorted = this.sortPhases(saved);
+        this.phases.set(sorted.map((p) => ({ ...p, originalId: p.id })));
+        this.projectSvc.project.update((project) => project ? { ...project, phases: sorted } : project);
         this.saved.set('Phases saved.');
       },
       error: (e) => this.error.set(`Failed to save phases: ${this.errorMessage(e)}`),
     });
+  }
+
+  private sortResearcherRows(rows: ResearcherRow[]): ResearcherRow[] {
+    return [...rows].sort((a, b) => a.name.localeCompare(b.name) || a.email.localeCompare(b.email));
+  }
+
+  private sortCriterionRows(rows: CriterionRow[]): CriterionRow[] {
+    return [...rows].sort((a, b) => {
+      const kindDiff = this.criterionOrder(a.kind) - this.criterionOrder(b.kind);
+      return kindDiff || a.id.localeCompare(b.id);
+    });
+  }
+
+  private sortPhaseRows(rows: PhaseRow[]): PhaseRow[] {
+    return [...rows].sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  private sortResearchers(items: Researcher[]): Researcher[] {
+    return [...items].sort((a, b) => a.name.localeCompare(b.name) || a.email.localeCompare(b.email));
+  }
+
+  private sortCriteria(items: Criterion[]): Criterion[] {
+    return [...items].sort((a, b) => {
+      const kindDiff = this.criterionOrder(a.kind) - this.criterionOrder(b.kind);
+      return kindDiff || a.id.localeCompare(b.id);
+    });
+  }
+
+  private sortPhases(items: Phase[]): Phase[] {
+    return [...items].sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  private criterionOrder(kind: CriterionKind): number {
+    return kind === 'include' ? 0 : 1;
   }
 
   private errorMessage(e: unknown): string {

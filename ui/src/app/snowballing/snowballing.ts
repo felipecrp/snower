@@ -81,10 +81,10 @@ export class SnowballingComponent {
   });
 
   readonly includeCriteria = computed(
-    () => this.project()?.criteria.filter((c) => c.kind === 'include') ?? [],
+    () => this.sortCriteria(this.project()?.criteria.filter((c) => c.kind === 'include') ?? []),
   );
   readonly excludeCriteria = computed(
-    () => this.project()?.criteria.filter((c) => c.kind === 'exclude') ?? [],
+    () => this.sortCriteria(this.project()?.criteria.filter((c) => c.kind === 'exclude') ?? []),
   );
   readonly phases = computed(() => this.project()?.phases ?? []);
   readonly triageCounts = computed<TriageCounts>(() => {
@@ -882,9 +882,11 @@ export class SnowballingComponent {
   }
 
   private compareCriterion(a: Criterion, b: Criterion): number {
-    const description = this.compareSortValue(a.description, b.description);
-    if (description !== 0) return description;
     return this.compareSortValue(a.id, b.id);
+  }
+
+  private sortCriteria(criteria: Criterion[]): Criterion[] {
+    return [...criteria].sort((a, b) => this.compareCriterion(a, b));
   }
 
   private fuzzyScore(value: string, query: string): number | null {
