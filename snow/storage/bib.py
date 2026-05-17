@@ -1,7 +1,6 @@
 """BibTeX reader/writer.
 
-Converts between on-disk `.bib` files and the `Work` domain model. Each
-parsed entry gets a `work_id` computed from `snow.domain.identity`.
+Converts between on-disk `.bib` files and the `Work` domain model.
 """
 
 from __future__ import annotations
@@ -14,7 +13,6 @@ from bibtexparser.bparser import BibTexParser
 from bibtexparser.bwriter import BibTexWriter
 from bibtexparser.customization import convert_to_unicode
 
-from snow.domain.identity import WorkRef, work_id
 from snow.domain.models import Work
 
 _KNOWN_FIELDS = {"title", "author", "year", "journal", "booktitle", "doi", "url", "pdf_url", "abstract"}
@@ -30,17 +28,9 @@ def _entry_to_work(entry: dict[str, str]) -> Work:
     year = int(year_str) if year_str.isdigit() else None
     venue = entry.get("journal") or entry.get("booktitle")
     doi = entry.get("doi") or None
-
-    ref = WorkRef(
-        title=entry.get("title"),
-        year=year,
-        authors=tuple(authors),
-        doi=doi,
-    )
     extra = {k: v for k, v in entry.items() if k not in _KNOWN_FIELDS and k not in {"ID", "ENTRYTYPE"}}
 
     return Work(
-        id=work_id(ref),
         bib_key=entry["ID"],
         title=entry.get("title", "").strip(),
         authors=authors,

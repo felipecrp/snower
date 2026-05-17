@@ -1,10 +1,11 @@
 from snow.domain.identity import (
     WorkRef,
+    full_fingerprint,
     mint_bib_key,
     normalize_author_surname,
     normalize_doi,
     normalize_title,
-    work_id,
+    short_fingerprint,
 )
 
 
@@ -47,46 +48,73 @@ class DescribeNormalizeAuthorSurname:
         assert normalize_author_surname("   ") == ""
 
 
-class DescribeWorkId:
-    def it_ignores_doi_when_available(self):
-        ref = WorkRef(doi="10.1145/X", title="Whatever", authors=("Someone",), year=2020)
-        without_doi = WorkRef(title="Whatever", authors=("Someone",), year=2020)
-        assert work_id(ref) == work_id(without_doi)
+class DescribeFullFingerprint:
+    def it_uses_all_authors(self):
+        one = WorkRef(title="T", authors=("A, X",), year=2020)
+        two = WorkRef(title="T", authors=("A, X", "B, Y"), year=2020)
+        assert full_fingerprint(one) != full_fingerprint(two)
 
-    def it_uses_metadata_even_when_doi_exists(self):
-        with_doi = WorkRef(doi="10.1/A", title="T", authors=("A",), year=2020)
-        only_meta = WorkRef(title="T", authors=("A",), year=2020)
-        assert work_id(with_doi) == work_id(only_meta)
+    def it_uses_full_title(self):
+        a = WorkRef(title="Snowballing systematic", authors=("Wohlin, Claus",), year=2014)
+        b = WorkRef(title="Snowballing in systematic literature reviews", authors=("Wohlin, Claus",), year=2014)
+        assert full_fingerprint(a) != full_fingerprint(b)
 
-    class DescribeWithoutDoi:
-        def it_is_stable_across_capitalization(self):
-            a = WorkRef(title="Snowballing Studies", authors=("Wohlin, Claus",), year=2014)
-            b = WorkRef(title="SNOWBALLING STUDIES", authors=("wohlin, claus",), year=2014)
-            assert work_id(a) == work_id(b)
+    def it_is_stable_across_capitalization(self):
+        a = WorkRef(title="Snowballing Studies", authors=("Wohlin, Claus",), year=2014)
+        b = WorkRef(title="SNOWBALLING STUDIES", authors=("wohlin, claus",), year=2014)
+        assert full_fingerprint(a) == full_fingerprint(b)
 
-        def it_is_stable_across_author_format(self):
-            a = WorkRef(title="X", authors=("Wohlin, Claus",), year=2014)
-            b = WorkRef(title="X", authors=("Claus Wohlin",), year=2014)
-            assert work_id(a) == work_id(b)
+    def it_differs_when_year_differs(self):
+        a = WorkRef(title="X", authors=("A",), year=2014)
+        b = WorkRef(title="X", authors=("A",), year=2015)
+        assert full_fingerprint(a) != full_fingerprint(b)
 
-        def it_differs_when_year_differs(self):
-            a = WorkRef(title="X", authors=("A",), year=2014)
-            b = WorkRef(title="X", authors=("A",), year=2015)
-            assert work_id(a) != work_id(b)
+    def it_has_sha1full_prefix(self):
+        ref = WorkRef(title="X", authors=("A",), year=2014)
+        assert full_fingerprint(ref).startswith("sha1full:")
 
-        def it_has_sha1_prefix(self):
-            ref = WorkRef(title="X", authors=("A",), year=2014)
-            assert work_id(ref).startswith("sha1:")
+    def it_does_not_use_doi(self):
+        # DOI removed from WorkRef — same title/year/authors always gives same fingerprint
+        a = WorkRef(title="Whatever", authors=("Someone",), year=2020)
+        b = WorkRef(title="Whatever", authors=("Someone",), year=2020)
+        assert full_fingerprint(a) == full_fingerprint(b)
+
+
+class DescribeShortFingerprint:
+    def it_uses_only_first_two_authors(self):
+        two = WorkRef(title="T", authors=("A, X", "B, Y"), year=2020)
+        three = WorkRef(title="T", authors=("A, X", "B, Y", "C, Z"), year=2020)
+        assert short_fingerprint(two) == short_fingerprint(three)
+
+    def it_uses_three_significant_title_words(self):
+        a = WorkRef(title="Systematic literature review methods", authors=("A",), year=2020)
+        b = WorkRef(title="Systematic literature review approaches", authors=("A",), year=2020)
+        # Only first 3 words (systematic, literature, review) are used → same
+        assert short_fingerprint(a) == short_fingerprint(b)
+
+    def it_differs_on_first_three_words(self):
+        a = WorkRef(title="Systematic review methods", authors=("A",), year=2020)
+        b = WorkRef(title="Systematic survey methods", authors=("A",), year=2020)
+        assert short_fingerprint(a) != short_fingerprint(b)
+
+    def it_has_sha1short_prefix(self):
+        ref = WorkRef(title="X", authors=("A",), year=2014)
+        assert short_fingerprint(ref).startswith("sha1short:")
+
+    def it_has_8_char_hex_suffix(self):
+        ref = WorkRef(title="Some long title here", authors=("A",), year=2014)
+        suffix = short_fingerprint(ref).removeprefix("sha1short:")
+        assert len(suffix) == 8
 
 
 class DescribeMintBibKey:
-    def it_uses_first_two_long_title_words(self):
+    def it_uses_first_significant_title_word(self):
         ref = WorkRef(
             title="Snowballing in systematic literature reviews",
             authors=("Wohlin, Claus",),
             year=2014,
         )
-        assert mint_bib_key(ref, taken=set()) == "wohlin2014snowballingsystematic"
+        assert mint_bib_key(ref, taken=set()) == "wohlin2014snowballing"
 
     def it_skips_words_with_four_or_fewer_chars(self):
         ref = WorkRef(
@@ -94,19 +122,26 @@ class DescribeMintBibKey:
             authors=("Wohlin, Claus",),
             year=2014,
         )
-        # "case" (4), "and" (3), "data" (4), "in" (2) are skipped.
-        assert mint_bib_key(ref, taken=set()) == "wohlin2014studyresearch"
+        # "case" (4) skipped; "study" (5) is the first significant word
+        assert mint_bib_key(ref, taken=set()) == "wohlin2014study"
 
-    def it_appends_short_hash_on_collision(self):
+    def it_appends_sequential_number_on_collision(self):
         ref = WorkRef(
             title="Snowballing in systematic literature reviews",
             authors=("Wohlin, Claus",),
             year=2014,
         )
-        taken = {"wohlin2014snowballingsystematic"}
-        key = mint_bib_key(ref, taken=taken)
-        assert key.startswith("wohlin2014snowballingsystematic_")
-        assert len(key.split("_")[-1]) == 4
+        taken = {"wohlin2014snowballing"}
+        assert mint_bib_key(ref, taken=taken) == "wohlin2014snowballing2"
+
+    def it_increments_sequential_number_past_existing(self):
+        ref = WorkRef(
+            title="Snowballing in systematic literature reviews",
+            authors=("Wohlin, Claus",),
+            year=2014,
+        )
+        taken = {"wohlin2014snowballing", "wohlin2014snowballing2"}
+        assert mint_bib_key(ref, taken=taken) == "wohlin2014snowballing3"
 
     def it_falls_back_to_untitled_when_no_title(self):
         ref = WorkRef(title=None, authors=("Wohlin, Claus",), year=2014)
@@ -114,16 +149,16 @@ class DescribeMintBibKey:
 
     def it_uses_anon_when_no_authors(self):
         ref = WorkRef(title="Systematic literature review", year=2014)
-        assert mint_bib_key(ref, taken=set()) == "anon2014systematicliterature"
+        assert mint_bib_key(ref, taken=set()) == "anon2014systematic"
 
     def it_uses_nd_when_no_year(self):
         ref = WorkRef(title="Systematic literature review", authors=("Wohlin, Claus",))
-        assert mint_bib_key(ref, taken=set()) == "wohlinndsystematicliterature"
+        assert mint_bib_key(ref, taken=set()) == "wohlinndsystematic"
 
     def it_normalizes_author_surname_for_key(self):
         ref = WorkRef(title="Systematic review", authors=("Müller, Hans",), year=2020)
-        assert mint_bib_key(ref, taken=set()) == "muller2020systematicreview"
+        assert mint_bib_key(ref, taken=set()) == "muller2020systematic"
 
     def it_uses_short_words_as_fallback_when_no_long_ones(self):
         ref = WorkRef(title="A B C D", authors=("Wohlin, Claus",), year=2014)
-        assert mint_bib_key(ref, taken=set()) == "wohlin2014ab"
+        assert mint_bib_key(ref, taken=set()) == "wohlin2014a"

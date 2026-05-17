@@ -7,10 +7,13 @@ They are designed to round-trip cleanly to .bib + .yml files on disk.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator
+
+from snow.domain.identity import WorkRef
 
 _ID_RE = re.compile(r"^[a-z0-9_]+$")
 
@@ -74,10 +77,26 @@ class Project(BaseModel):
     providers: list[ProviderConfig] = Field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class BibliographicWork:
+    """Provider/import result: identity fields plus optional bibliographic metadata."""
+
+    title: str | None = None
+    year: int | None = None
+    authors: tuple[str, ...] = ()
+    doi: str | None = None
+    venue: str | None = None
+    url: str | None = None
+    pdf_url: str | None = None
+    abstract: str | None = None
+
+    def ref(self) -> WorkRef:
+        return WorkRef(title=self.title, year=self.year, authors=self.authors)
+
+
 class Work(BaseModel):
     """A bibliographic entry as it appears inside a set."""
 
-    id: str
     bib_key: str
     title: str
     authors: list[str] = Field(default_factory=list)
@@ -105,7 +124,7 @@ class Set(BaseModel):
 
 
 class Decision(BaseModel):
-    work_id: str
+    bib_key: str
     researcher_id: str
     verdict: Verdict
     criterion_id: str | None = None
@@ -116,7 +135,7 @@ class Decision(BaseModel):
 class Resolution(BaseModel):
     """Final call when researchers disagreed on a work."""
 
-    work_id: str
+    bib_key: str
     verdict: Verdict
     by: str
     note: str | None = None

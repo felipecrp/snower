@@ -98,5 +98,5 @@ async def import_work(
         updated_set = repo.import_bib_to_set(set_id, works, criteria=criteria, researcher_id=x_researcher_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    saved = next((w for w in updated_set.works if w.id == works[0].id), works[0])
+    saved = next((w for w in updated_set.works if w.bib_key == works[0].bib_key), works[0])
     return saved

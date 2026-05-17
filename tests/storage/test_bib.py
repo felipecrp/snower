@@ -31,20 +31,6 @@ class DescribeBibLoad:
         works = bib.load(path)
         assert len(works) == 2
 
-    def it_assigns_work_id_from_metadata_when_doi_is_available(self, tmp_path: Path):
-        path = tmp_path / "in.bib"
-        path.write_text(SAMPLE_BIB)
-        works = bib.load(path)
-        wohlin = next(w for w in works if w.bib_key == "wohlin2014")
-        assert wohlin.id == "sha1:e9801894fc58bb6e"
-
-    def it_falls_back_to_hash_when_no_doi(self, tmp_path: Path):
-        path = tmp_path / "in.bib"
-        path.write_text(SAMPLE_BIB)
-        works = bib.load(path)
-        kitchenham = next(w for w in works if w.bib_key == "kitchenham2007")
-        assert kitchenham.id.startswith("sha1:")
-
     def it_splits_multiple_authors(self, tmp_path: Path):
         path = tmp_path / "in.bib"
         path.write_text(SAMPLE_BIB)
@@ -113,7 +99,6 @@ class DescribeBibDump:
         original_by_key = {w.bib_key: w for w in original}
         for w in reloaded:
             o = original_by_key[w.bib_key]
-            assert w.id == o.id
             assert w.title == o.title
             assert w.authors == o.authors
             assert w.year == o.year
@@ -122,8 +107,8 @@ class DescribeBibDump:
 
     def it_emits_entries_sorted_by_key(self, tmp_path: Path):
         works = [
-            Work(id="x", bib_key="zeta2020", title="Z", authors=["Z, Z"]),
-            Work(id="y", bib_key="alpha2020", title="A", authors=["A, A"]),
+            Work(bib_key="zeta2020", title="Z", authors=["Z, Z"]),
+            Work(bib_key="alpha2020", title="A", authors=["A, A"]),
         ]
         out = tmp_path / "out.bib"
         bib.dump(works, out)
@@ -132,7 +117,7 @@ class DescribeBibDump:
 
     def it_dumps_pdf_url(self, tmp_path: Path):
         works = [
-            Work(id="x", bib_key="x2020", title="X", authors=["X, X"], pdf_url="https://example.com/x.pdf"),
+            Work(bib_key="x2020", title="X", authors=["X, X"], pdf_url="https://example.com/x.pdf"),
         ]
         out = tmp_path / "out.bib"
         bib.dump(works, out)

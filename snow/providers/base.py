@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from snow.domain.identity import BibliographicWork
+from snow.domain.models import BibliographicWork
 from snow.domain.models import Work
 
 

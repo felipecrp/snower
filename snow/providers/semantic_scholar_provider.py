@@ -24,7 +24,7 @@ import time
 
 import httpx
 
-from snow.domain.identity import BibliographicWork
+from snow.domain.models import BibliographicWork
 from snow.domain.models import Work
 from .base import Provider
 

@@ -37,17 +37,17 @@ def get_decisions(set_id: str, repo: ProjectRepo = Depends(get_repo)) -> Decisio
     return DecisionsResponse(decisions=decisions, resolutions=resolutions)
 
 
-@router.put("/{work_id:path}", response_model=Decision)
+@router.put("/{bib_key:path}", response_model=Decision)
 def upsert_decision(
     set_id: str,
-    work_id: str,
+    bib_key: str,
     body: DecisionInput,
     repo: ProjectRepo = Depends(get_repo),
     researcher: Researcher = Depends(get_active_researcher),
 ) -> Decision:
     _ensure_set_exists(repo, set_id)
     new_decision = Decision(
-        work_id=work_id,
+        bib_key=bib_key,
         researcher_id=researcher.id,
         verdict=body.verdict,
         criterion_id=body.criterion_id,
@@ -58,12 +58,12 @@ def upsert_decision(
     return new_decision
 
 
-@router.delete("/{work_id:path}", status_code=204)
+@router.delete("/{bib_key:path}", status_code=204)
 def delete_decision(
     set_id: str,
-    work_id: str,
+    bib_key: str,
     repo: ProjectRepo = Depends(get_repo),
     researcher: Researcher = Depends(get_active_researcher),
 ) -> None:
     _ensure_set_exists(repo, set_id)
-    repo.delete_researcher_decision(set_id, work_id, researcher.id)
+    repo.delete_researcher_decision(set_id, bib_key, researcher.id)

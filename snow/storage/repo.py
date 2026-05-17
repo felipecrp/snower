@@ -31,13 +31,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from snow.domain.identity import (
-    BibliographicWork,
     WorkRef,
+    full_fingerprint,
     mint_bib_key,
     normalize_doi,
-    work_id as compute_work_id,
+    short_fingerprint,
 )
 from snow.domain.models import (
+    BibliographicWork,
     Criterion,
     Decision,
     Project,
@@ -67,18 +68,21 @@ _SET_DIR_PATTERN = re.compile(r"^(\d{2})-(start|backward|forward)$")
 _ORPHAN_DIR_PATTERN = re.compile(r"^orphan$")
 
 
-def _as_identity_ref(work: BibliographicWork | WorkRef) -> WorkRef:
-    return work.ref() if isinstance(work, BibliographicWork) else work
+def _as_work_ref(ref: BibliographicWork | WorkRef) -> WorkRef:
+    return ref.ref() if isinstance(ref, BibliographicWork) else ref
 
 
-def _work_from_provider_result(work_id: str, ref: BibliographicWork | WorkRef) -> Work:
+def _work_ref(work: Work) -> WorkRef:
+    return WorkRef(title=work.title, year=work.year, authors=tuple(work.authors))
+
+
+def _work_from_provider_result(ref: BibliographicWork | WorkRef) -> Work:
     return Work(
-        id=work_id,
-        bib_key="",
+        bib_key="",  # assigned by _renormalize_keys
         title=ref.title or "",
         authors=list(ref.authors),
         year=ref.year,
-        doi=ref.doi,
+        doi=ref.doi if isinstance(ref, BibliographicWork) else None,
         venue=ref.venue if isinstance(ref, BibliographicWork) else None,
         url=ref.url if isinstance(ref, BibliographicWork) else None,
         pdf_url=ref.pdf_url if isinstance(ref, BibliographicWork) else None,
@@ -96,28 +100,14 @@ def _fill_missing_work_fields(existing: Work, incoming: Work) -> Work:
     })
 
 
-def _identity_ref_for_work(work: Work, *, include_doi: bool = True) -> WorkRef:
-    return WorkRef(
-        title=work.title,
-        year=work.year,
-        authors=tuple(work.authors),
-        doi=work.doi if include_doi else None,
-    )
-
-
-def _canonicalize_work_id(work: Work) -> Work:
-    canonical_id = compute_work_id(_identity_ref_for_work(work))
-    if work.id == canonical_id:
-        return work
-    return work.model_copy(update={"id": canonical_id})
-
-
-def _legacy_id_without_doi(work: Work) -> str:
-    return compute_work_id(_identity_ref_for_work(work, include_doi=False))
-
-
 def _normalized_doi(work: Work) -> str | None:
     return normalize_doi(work.doi) if work.doi else None
+
+
+@dataclass
+class KeyEntry:
+    short: str
+    bib_key: str
 
 
 @dataclass
@@ -191,16 +181,17 @@ class ProjectRepo:
     def merge_with_library(self, incoming: list[Work]) -> list[Work]:
         """Fill missing fields from `works/<bib_key>.bib` when the paper is already known.
 
-        Looked up by canonical work_id via keys.yml. The on-disk version wins for
-        any field it already has; the incoming version contributes only to gaps.
-        Lets the OpenAlex enrichment that follows short-circuit on cache hits.
+        Looked up via full fingerprint (exact) then short fingerprint (fuzzy) in keys.yml.
+        The on-disk version wins for any field it already has; incoming contributes only gaps.
         """
-        canonical = [_canonicalize_work_id(w) for w in incoming]
-        id_to_key = {wid: key for key, wid in self.load_keys().items()}
+        keys = self.load_keys()
+        full_to_bib_key = {fh: e.bib_key for fh, e in keys.items()}
+        short_to_bib_key = {e.short: e.bib_key for e in keys.values()}
         merged: list[Work] = []
-        for w in canonical:
-            key = id_to_key.get(w.id)
-            cached = self.load_work(key) if key else None
+        for w in incoming:
+            ref = _work_ref(w)
+            bk = full_to_bib_key.get(full_fingerprint(ref)) or short_to_bib_key.get(short_fingerprint(ref))
+            cached = self.load_work(bk) if bk else None
             if cached is None:
                 merged.append(w)
             else:
@@ -242,7 +233,7 @@ class ProjectRepo:
     def save_set(self, s: Set) -> None:
         paths = self.set_dir(s.id)
         paths.root.mkdir(parents=True, exist_ok=True)
-        self._renormalize_keys(s.works)
+        self._renormalize_keys(s.works)  # assigns bib_keys and updates keys.yml
         for w in s.works:
             self.save_work(w)
         metadata = {
@@ -316,8 +307,11 @@ class ProjectRepo:
 
         logger.info("Starting %s snowballing (force=%s) — %d set(s) found", direction, force, len(all_sets))
 
-        # All work_ids already present across all sets (for deduplication)
-        all_known_ids: set[str] = {w.id for s in all_sets for w in s.works}
+        # Use full fingerprints for deduplication; keys.yml is the registry.
+        keys = self.load_keys()
+        all_known_hashes: set[str] = set(keys.keys())
+        full_to_bib_key: dict[str, str] = {fh: e.bib_key for fh, e in keys.items()}
+        short_to_bib_key: dict[str, str] = {e.short: e.bib_key for e in keys.values()}
 
         # Group consensus-accepted, not-yet-snowballed works by their set's iteration
         to_process: dict[int, list[Work]] = defaultdict(list)
@@ -326,19 +320,19 @@ class ProjectRepo:
             vote_counts: dict[str, dict[str, int]] = defaultdict(lambda: {"accept": 0, "reject": 0})
             for d in decisions:
                 key = "accept" if d.verdict == Verdict.ACCEPT else "reject"
-                vote_counts[d.work_id][key] += 1
-            accepted_ids = {wid for wid, v in vote_counts.items() if v["accept"] > v["reject"]}
+                vote_counts[d.bib_key][key] += 1
+            accepted_bib_keys = {bk for bk, v in vote_counts.items() if v["accept"] > v["reject"]}
 
             n_accepted = n_done = n_queued = 0
             for work in s.works:
-                if work.id not in accepted_ids:
+                if work.bib_key not in accepted_bib_keys:
                     pass
                 elif work.bib_key in already_done:
                     n_done += 1
                 else:
                     n_queued += 1
                     to_process[s.iteration].append(work)
-            n_accepted = len(accepted_ids)
+            n_accepted = len(accepted_bib_keys)
             logger.info(
                 "  %s: %d work(s) total — %d consensus-accepted, %d already snowballed, %d queued",
                 s.id, len(s.works), n_accepted, n_done, n_queued,
@@ -353,8 +347,8 @@ class ProjectRepo:
 
         existing_relations = self.load_relations()
         known_edges: set[tuple[str, str]] = {(r.citing_bib_key, r.cited_bib_key) for r in existing_relations}
-        # Collect raw edges as work_id pairs; converted to bib_keys after save_set.
-        pending_edges: list[tuple[str, str]] = []  # (citing_work_id, cited_work_id)
+        # Collect edges as (full_hash, full_hash) pairs; resolved to bib_keys after save_set.
+        pending_edges: list[tuple[str, str]] = []  # (citing_fhash, cited_fhash)
 
         for iteration, works in sorted(to_process.items()):
             target_iteration = iteration + 1
@@ -362,7 +356,7 @@ class ProjectRepo:
 
             try:
                 target_set = self.load_set(target_id)
-                target_known = {w.id for w in target_set.works}
+                target_known_hashes: set[str] = {full_fingerprint(_work_ref(w)) for w in target_set.works}
                 logger.info("Updating existing set %s", target_id)
             except FileNotFoundError:
                 target_set = Set(
@@ -371,11 +365,14 @@ class ProjectRepo:
                     iteration=target_iteration,
                     works=[],
                 )
-                target_known = set()
+                target_known_hashes = set()
                 logger.info("Creating new set %s", target_id)
 
             new_works: list[Work] = []
             for work in works:
+                source_fhash = full_fingerprint(_work_ref(work))
+                full_to_bib_key.setdefault(source_fhash, work.bib_key)
+
                 try:
                     if kind == SetKind.BACKWARD:
                         refs = provider.fetch_references(work)
@@ -387,18 +384,29 @@ class ProjectRepo:
 
                 added = 0
                 for ref in refs:
-                    wid = compute_work_id(_as_identity_ref(ref))
-                    if kind == SetKind.BACKWARD:
-                        pending_edges.append((work.id, wid))
-                    else:
-                        pending_edges.append((wid, work.id))
+                    ref_work_ref = _as_work_ref(ref)
+                    ref_fhash = full_fingerprint(ref_work_ref)
+                    ref_shash = short_fingerprint(ref_work_ref)
 
-                    if wid in all_known_ids or wid in target_known:
+                    if kind == SetKind.BACKWARD:
+                        pending_edges.append((source_fhash, ref_fhash))
+                    else:
+                        pending_edges.append((ref_fhash, source_fhash))
+
+                    if ref_fhash in all_known_hashes or ref_fhash in target_known_hashes:
                         continue
-                    all_known_ids.add(wid)
-                    target_known.add(wid)
+
+                    if ref_shash in short_to_bib_key:
+                        # Fuzzy match: same paper from different source — register new hash, skip
+                        all_known_hashes.add(ref_fhash)
+                        target_known_hashes.add(ref_fhash)
+                        full_to_bib_key[ref_fhash] = short_to_bib_key[ref_shash]
+                        continue
+
+                    all_known_hashes.add(ref_fhash)
+                    target_known_hashes.add(ref_fhash)
                     added += 1
-                    new_works.append(_work_from_provider_result(wid, ref))
+                    new_works.append(_work_from_provider_result(ref))
 
                 if refs:
                     logger.info(
@@ -415,12 +423,14 @@ class ProjectRepo:
             self.save_set(target_set)  # assigns bib_keys via _renormalize_keys
             updated_sets.append(self.load_set(target_id))
 
-        # Convert work_id edges to bib_key edges using the now-complete keys registry.
-        id_to_key: dict[str, str] = {wid: key for key, wid in self.load_keys().items()}
+        # Resolve full-hash edges to bib_key edges using the now-complete keys registry.
+        final_full_to_bib_key = {fh: e.bib_key for fh, e in self.load_keys().items()}
+        # Merge in any runtime-added mappings (fuzzy matches registered above)
+        final_full_to_bib_key.update(full_to_bib_key)
         new_relations: list[Relation] = []
-        for citing_id, cited_id in pending_edges:
-            citing_key = id_to_key.get(citing_id)
-            cited_key = id_to_key.get(cited_id)
+        for citing_fhash, cited_fhash in pending_edges:
+            citing_key = final_full_to_bib_key.get(citing_fhash)
+            cited_key = final_full_to_bib_key.get(cited_fhash)
             if not citing_key or not cited_key:
                 continue
             edge = (citing_key, cited_key)
@@ -462,15 +472,15 @@ class ProjectRepo:
         self.set_dir(set_id).root.mkdir(parents=True, exist_ok=True)
         data = yml.load(path) or {}
         existing = [Decision.model_validate(d) for d in data.get("decisions", [])]
-        existing = [d for d in existing if d.work_id != decision.work_id]
+        existing = [d for d in existing if d.bib_key != decision.bib_key]
         existing.append(decision)
         yml.dump({"decisions": [d.model_dump(mode="json", exclude_none=True) for d in existing]}, path)
 
-    def delete_researcher_decision(self, set_id: str, work_id: str, researcher_id: str) -> None:
+    def delete_researcher_decision(self, set_id: str, bib_key: str, researcher_id: str) -> None:
         path = self._researcher_decisions_path(set_id, researcher_id)
         data = yml.load(path) or {}
         existing = [Decision.model_validate(d) for d in data.get("decisions", [])]
-        remaining = [d for d in existing if d.work_id != work_id]
+        remaining = [d for d in existing if d.bib_key != bib_key]
         yml.dump({"decisions": [d.model_dump(mode="json", exclude_none=True) for d in remaining]}, path)
 
     def save_decisions(
@@ -509,63 +519,52 @@ class ProjectRepo:
     def keys_path(self) -> Path:
         return self.root / KEYS_FILE
 
-    def load_keys(self) -> dict[str, str]:
-        """Mapping of bib_key -> work_id for the whole project."""
+    def load_keys(self) -> dict[str, KeyEntry]:
+        """Mapping of full_fingerprint -> KeyEntry(short, bib_key) for the whole project."""
         data = yml.load(self.keys_path()) or {}
-        return dict(data.get("keys", {}))
+        result: dict[str, KeyEntry] = {}
+        for fhash, entry in (data.get("keys") or {}).items():
+            result[fhash] = KeyEntry(short=entry["short"], bib_key=entry["bib_key"])
+        return result
 
-    def save_keys(self, keys: dict[str, str]) -> None:
-        yml.dump({"keys": dict(sorted(keys.items()))}, self.keys_path())
-
-    def _remap_work_id(self, set_id: str, old_id: str, new_id: str, bib_key: str) -> None:
-        if old_id == new_id:
-            return
-
-        keys = self.load_keys()
-        if bib_key and keys.get(bib_key) == old_id:
-            keys[bib_key] = new_id
-            self.save_keys(keys)
-
-        set_dir = self.set_dir(set_id).root
-        for dec_file in sorted(set_dir.glob(f"{DECISIONS_PREFIX}*.yml")):
-            data = yml.load(dec_file) or {}
-            decisions = [Decision.model_validate(d) for d in data.get("decisions", [])]
-            changed = False
-            remapped: list[Decision] = []
-            for decision in decisions:
-                if decision.work_id == old_id:
-                    remapped.append(decision.model_copy(update={"work_id": new_id}))
-                    changed = True
-                else:
-                    remapped.append(decision)
-            if changed:
-                yml.dump({"decisions": [d.model_dump(mode="json", exclude_none=True) for d in remapped]}, dec_file)
+    def save_keys(self, keys: dict[str, KeyEntry]) -> None:
+        serialized = {
+            fhash: {"short": e.short, "bib_key": e.bib_key}
+            for fhash, e in sorted(keys.items())
+        }
+        yml.dump({"keys": serialized}, self.keys_path())
 
     def _renormalize_keys(self, works: list[Work]) -> None:
-        """Assign bib_keys following <surname><year><letter>, persisting in keys.yml.
+        """Assign bib_keys and persist in keys.yml using the two-level fingerprint algorithm.
 
-        - Reuses an existing key when the work_id is already registered.
-        - Mints a fresh letter suffix on first sight.
+        1. Full fingerprint match → reuse existing bib_key (exact re-import).
+        2. Short fingerprint match → reuse existing bib_key (same paper, different source).
+        3. No match → mint new bib_key (<surname><year><word>, sequential suffix on collision).
         """
         keys = self.load_keys()
-        inverse: dict[str, str] = {v: k for k, v in keys.items()}
-        taken: set[str] = set(keys.keys())
+        short_to_bib_key: dict[str, str] = {e.short: e.bib_key for e in keys.values()}
+        taken: set[str] = {e.bib_key for e in keys.values()}
 
         for work in works:
-            if work.id in inverse:
-                work.bib_key = inverse[work.id]
+            ref = _work_ref(work)
+            fhash = full_fingerprint(ref)
+            shash = short_fingerprint(ref)
+
+            if fhash in keys:
+                work.bib_key = keys[fhash].bib_key
                 continue
-            ref = WorkRef(
-                title=work.title,
-                year=work.year,
-                authors=tuple(work.authors),
-                doi=work.doi,
-            )
+
+            if shash in short_to_bib_key:
+                bk = short_to_bib_key[shash]
+                keys[fhash] = KeyEntry(short=shash, bib_key=bk)
+                work.bib_key = bk
+                continue
+
             new_key = mint_bib_key(ref, taken)
-            work.bib_key = new_key
-            keys[new_key] = work.id
-            inverse[work.id] = new_key
+            keys[fhash] = KeyEntry(short=shash, bib_key=new_key)
+            short_to_bib_key[shash] = new_key
             taken.add(new_key)
+            work.bib_key = new_key
 
         self.save_keys(keys)
 
@@ -595,34 +594,33 @@ class ProjectRepo:
         entries = [{key: val} for key, val in sorted(grouped.items())]
         yml.dump({"relations": entries}, self.relations_path())
 
-    def _move_work(self, work_id: str, from_set_id: str, to_set_id: str) -> None:
+    def _move_work(self, bib_key: str, from_set_id: str, to_set_id: str) -> None:
         """Move a work and its per-researcher decisions from one set to another."""
         from_set = self.load_set(from_set_id)
         to_set = self.load_set(to_set_id)
 
-        work = next((w for w in from_set.works if w.id == work_id), None)
+        work = next((w for w in from_set.works if w.bib_key == bib_key), None)
         if not work:
             return
 
-        from_set.works = [w for w in from_set.works if w.id != work_id]
+        from_set.works = [w for w in from_set.works if w.bib_key != bib_key]
         to_set.works.append(work)
         self.save_set(from_set)
         self.save_set(to_set)
 
         from_dir = self.set_dir(from_set_id).root
         for dec_file in sorted(from_dir.glob(f"{DECISIONS_PREFIX}*.yml")):
-            researcher_id = dec_file.stem[len(DECISIONS_PREFIX):]
             data = yml.load(dec_file) or {}
             all_dec = [Decision.model_validate(d) for d in data.get("decisions", [])]
-            to_move = [d for d in all_dec if d.work_id == work_id]
-            remaining = [d for d in all_dec if d.work_id != work_id]
+            to_move = [d for d in all_dec if d.bib_key == bib_key]
+            remaining = [d for d in all_dec if d.bib_key != bib_key]
             if remaining:
                 yml.dump({"decisions": [d.model_dump(mode="json", exclude_none=True) for d in remaining]}, dec_file)
             else:
                 dec_file.unlink()
             for d in to_move:
                 self.save_researcher_decision(to_set_id, d)
-        logger.info("Moved work %s from %s to %s", work_id, from_set_id, to_set_id)
+        logger.info("Moved work %s from %s to %s", bib_key, from_set_id, to_set_id)
 
     def run_paper_snowballing(self, kind: SetKind, bib_key: str, provider) -> list["Set"]:  # type: ignore[type-arg]
         """Fetch references/citations for a single paper identified by bib_key.
@@ -654,7 +652,7 @@ class ProjectRepo:
         decisions, _ = self.load_decisions(source_set.id)
         votes = {"accept": 0, "reject": 0}
         for d in decisions:
-            if d.work_id != source_work.id:
+            if d.bib_key != source_work.bib_key:
                 continue
             votes["accept" if d.verdict == Verdict.ACCEPT else "reject"] += 1
         if votes["accept"] <= votes["reject"]:
@@ -669,17 +667,24 @@ class ProjectRepo:
         log = self.load_snowball_log()
         already_done = log.setdefault(direction, {})
 
-        all_known: dict[str, tuple[Set, Work]] = {}
+        keys = self.load_keys()
+        full_to_bib_key: dict[str, str] = {fh: e.bib_key for fh, e in keys.items()}
+        short_to_bib_key: dict[str, str] = {e.short: e.bib_key for e in keys.values()}
+
+        all_known: dict[str, tuple[Set, Work]] = {}  # bib_key → (set, work)
         for s in all_sets:
             for w in s.works:
-                all_known[w.id] = (s, w)
+                all_known[w.bib_key] = (s, w)
 
         try:
             target_set = self.load_set(target_id)
         except FileNotFoundError:
             target_set = Set(id=target_id, kind=kind, iteration=target_iteration, works=[])
 
-        target_known: set[str] = {w.id for w in target_set.works}
+        target_known_hashes: set[str] = {full_fingerprint(_work_ref(w)) for w in target_set.works}
+
+        source_fhash = full_fingerprint(_work_ref(source_work))
+        full_to_bib_key.setdefault(source_fhash, source_work.bib_key)
 
         try:
             if kind == SetKind.BACKWARD:
@@ -693,43 +698,51 @@ class ProjectRepo:
         now_iso = datetime.now(tz=timezone.utc).isoformat()
         existing_relations = self.load_relations()
         known_edges: set[tuple[str, str]] = {(r.citing_bib_key, r.cited_bib_key) for r in existing_relations}
-        pending_edges: list[tuple[str, str]] = []
-        moves: list[tuple[str, str]] = []  # (work_id, from_set_id) to move into target
+        pending_edges: list[tuple[str, str]] = []  # (citing_fhash, cited_fhash)
+        moves: list[tuple[str, str]] = []  # (bib_key, from_set_id) to move into target
 
         for ref in refs:
-            wid = compute_work_id(_as_identity_ref(ref))
-            if kind == SetKind.BACKWARD:
-                pending_edges.append((source_work.id, wid))
-            else:
-                pending_edges.append((wid, source_work.id))
+            ref_work_ref = _as_work_ref(ref)
+            ref_fhash = full_fingerprint(ref_work_ref)
+            ref_shash = short_fingerprint(ref_work_ref)
 
-            if wid in target_known:
+            if kind == SetKind.BACKWARD:
+                pending_edges.append((source_fhash, ref_fhash))
+            else:
+                pending_edges.append((ref_fhash, source_fhash))
+
+            if ref_fhash in target_known_hashes:
                 continue
 
-            if wid in all_known:
-                existing_set, _ = all_known[wid]
+            # Resolve bib_key for this ref
+            ref_bib_key = full_to_bib_key.get(ref_fhash) or short_to_bib_key.get(ref_shash)
+
+            if ref_bib_key and ref_bib_key in all_known:
+                existing_set, _ = all_known[ref_bib_key]
                 if existing_set.iteration > target_iteration:
-                    moves.append((wid, existing_set.id))
-                    target_known.add(wid)
-            else:
-                target_set.works.append(_work_from_provider_result(wid, ref))
-                target_known.add(wid)
+                    moves.append((ref_bib_key, existing_set.id))
+                    target_known_hashes.add(ref_fhash)
+                    full_to_bib_key[ref_fhash] = ref_bib_key
+            elif ref_fhash not in full_to_bib_key:
+                target_set.works.append(_work_from_provider_result(ref))
+                target_known_hashes.add(ref_fhash)
 
         already_done[bib_key] = {"at": now_iso, "found": len(refs)}
         self.save_set(target_set)
         self.save_snowball_log(log)
 
         moved_from_ids: list[str] = []
-        for work_id, from_set_id in moves:
-            self._move_work(work_id, from_set_id, target_id)
+        for move_bib_key, from_set_id in moves:
+            self._move_work(move_bib_key, from_set_id, target_id)
             if from_set_id not in moved_from_ids:
                 moved_from_ids.append(from_set_id)
 
-        id_to_key: dict[str, str] = {wid: key for key, wid in self.load_keys().items()}
+        final_full_to_bib_key = {fh: e.bib_key for fh, e in self.load_keys().items()}
+        final_full_to_bib_key.update(full_to_bib_key)
         new_relations: list[Relation] = []
-        for citing_id, cited_id in pending_edges:
-            citing_key = id_to_key.get(citing_id)
-            cited_key = id_to_key.get(cited_id)
+        for citing_fhash, cited_fhash in pending_edges:
+            citing_key = final_full_to_bib_key.get(citing_fhash)
+            cited_key = final_full_to_bib_key.get(cited_fhash)
             if not citing_key or not cited_key:
                 continue
             edge = (citing_key, cited_key)
@@ -745,15 +758,15 @@ class ProjectRepo:
             updated.append(self.load_set(from_id))
         return updated
 
-    def _move_decisions_between(self, work_id: str, from_set_id: str, to_set_id: str) -> None:
+    def _move_decisions_between(self, bib_key: str, from_set_id: str, to_set_id: str) -> None:
         from_dir = self.set_dir(from_set_id).root
         if not from_dir.exists():
             return
         for dec_file in sorted(from_dir.glob(f"{DECISIONS_PREFIX}*.yml")):
             data = yml.load(dec_file) or {}
             all_dec = [Decision.model_validate(d) for d in data.get("decisions", [])]
-            to_move = [d for d in all_dec if d.work_id == work_id]
-            remaining = [d for d in all_dec if d.work_id != work_id]
+            to_move = [d for d in all_dec if d.bib_key == bib_key]
+            remaining = [d for d in all_dec if d.bib_key != bib_key]
             if remaining:
                 yml.dump({"decisions": [d.model_dump(mode="json", exclude_none=True) for d in remaining]}, dec_file)
             else:
@@ -779,10 +792,10 @@ class ProjectRepo:
             decisions, _ = self.load_decisions(sid)
             votes: dict[str, dict[str, int]] = defaultdict(lambda: {"accept": 0, "reject": 0})
             for d in decisions:
-                votes[d.work_id]["accept" if d.verdict == Verdict.ACCEPT else "reject"] += 1
+                votes[d.bib_key]["accept" if d.verdict == Verdict.ACCEPT else "reject"] += 1
             for w in s.works:
                 bib_key_iteration[w.bib_key] = s.iteration
-                if votes[w.id]["accept"] > votes[w.id]["reject"]:
+                if votes[w.bib_key]["accept"] > votes[w.bib_key]["reject"]:
                     accepted_bib_keys.add(w.bib_key)
 
         relations = self.load_relations()
@@ -796,7 +809,7 @@ class ProjectRepo:
             orphan_set = Set(id=orphan_id, kind=SetKind.ORPHAN, iteration=0, works=[])
 
         # Step 1: orphan disconnected works from regular backward/forward sets.
-        existing_orphan_ids = {w.id for w in orphan_set.works}
+        existing_orphan_bib_keys = {w.bib_key for w in orphan_set.works}
         for sid, s in regular_sets.items():
             if s.kind == SetKind.BACKWARD:
                 connected = cited_by_accepted
@@ -816,10 +829,10 @@ class ProjectRepo:
             s.works = keep
             self.save_set(s)
             for w in to_orphan:
-                if w.id not in existing_orphan_ids:
+                if w.bib_key not in existing_orphan_bib_keys:
                     orphan_set.works.append(w)
-                    existing_orphan_ids.add(w.id)
-                self._move_decisions_between(w.id, sid, orphan_id)
+                    existing_orphan_bib_keys.add(w.bib_key)
+                self._move_decisions_between(w.bib_key, sid, orphan_id)
                 logger.info("Orphaned work %s from %s", w.bib_key, sid)
 
         # Step 2: return reconnected orphans to the earliest valid iteration set.
@@ -836,10 +849,10 @@ class ProjectRepo:
                 target_set = self.load_set(target_id)
             except FileNotFoundError:
                 target_set = Set(id=target_id, kind=target_kind, iteration=target_iter, works=[])
-            if w.id not in {tw.id for tw in target_set.works}:
+            if w.bib_key not in {tw.bib_key for tw in target_set.works}:
                 target_set.works.append(w)
                 self.save_set(target_set)
-                self._move_decisions_between(w.id, orphan_id, target_id)
+                self._move_decisions_between(w.bib_key, orphan_id, target_id)
                 logger.info("Returned work %s from orphan to %s", w.bib_key, target_id)
 
         orphan_set.works = remaining_orphans
@@ -885,47 +898,59 @@ class ProjectRepo:
         except FileNotFoundError:
             raise ValueError(f"Set not found: {set_id}")
 
-        new_works = [_canonicalize_work_id(w) for w in new_works]
-        existing_by_id = {w.id: i for i, w in enumerate(existing.works)}
-        existing_by_legacy_id = {_legacy_id_without_doi(w): i for i, w in enumerate(existing.works)}
-        existing_by_doi = {
-            doi: i
-            for i, w in enumerate(existing.works)
-            if (doi := _normalized_doi(w))
-        }
+        # Build lookup indices for existing works using fingerprints and DOI.
+        existing_by_full: dict[str, int] = {}
+        existing_by_short: dict[str, int] = {}
+        existing_by_doi: dict[str, int] = {}
+        existing_by_bib_key: dict[str, int] = {}
+        for i, w in enumerate(existing.works):
+            ref = _work_ref(w)
+            existing_by_full[full_fingerprint(ref)] = i
+            existing_by_short[short_fingerprint(ref)] = i
+            if doi := _normalized_doi(w):
+                existing_by_doi[doi] = i
+            existing_by_bib_key[w.bib_key] = i
+
         added: list[Work] = []
         for w in new_works:
-            existing_index = existing_by_id.get(w.id)
+            ref = _work_ref(w)
+            fhash = full_fingerprint(ref)
+            shash = short_fingerprint(ref)
+
+            existing_index = existing_by_full.get(fhash)
+            if existing_index is None and (doi := _normalized_doi(w)):
+                existing_index = existing_by_doi.get(doi)
             if existing_index is None:
-                doi = _normalized_doi(w)
-                if doi:
-                    existing_index = existing_by_doi.get(doi)
+                existing_index = existing_by_short.get(shash)
             if existing_index is None:
-                existing_index = existing_by_legacy_id.get(_legacy_id_without_doi(w))
+                existing_index = existing_by_bib_key.get(w.bib_key)
 
             if existing_index is not None:
                 current = existing.works[existing_index]
-                merged = _canonicalize_work_id(_fill_missing_work_fields(current, w))
-                if current.id != merged.id:
-                    self._remap_work_id(set_id, current.id, merged.id, current.bib_key)
+                merged = _fill_missing_work_fields(current, w)
                 existing.works[existing_index] = merged
-                existing_by_id[merged.id] = existing_index
-                existing_by_legacy_id[_legacy_id_without_doi(merged)] = existing_index
+                merged_ref = _work_ref(merged)
+                existing_by_full[full_fingerprint(merged_ref)] = existing_index
+                existing_by_short[short_fingerprint(merged_ref)] = existing_index
                 if doi := _normalized_doi(merged):
                     existing_by_doi[doi] = existing_index
             else:
                 existing.works.append(w)
                 added.append(w)
                 new_index = len(existing.works) - 1
-                existing_by_id[w.id] = new_index
-                existing_by_legacy_id[_legacy_id_without_doi(w)] = new_index
+                existing_by_full[fhash] = new_index
+                existing_by_short[shash] = new_index
                 if doi := _normalized_doi(w):
                     existing_by_doi[doi] = new_index
+                existing_by_bib_key[w.bib_key] = new_index
         self.save_set(existing)
 
         if criteria and researcher_id:
             criterion_by_id = {c.id: c for c in criteria}
             now = datetime.now(timezone.utc)
+            # Reload to get finalized bib_keys after _renormalize_keys ran in save_set.
+            final_set = self.load_set(set_id)
+            final_by_full = {full_fingerprint(_work_ref(w)): w.bib_key for w in final_set.works}
             for w in new_works:
                 groups_raw = w.extra.get("groups", "")
                 groups = [g.strip() for g in groups_raw.split(",") if g.strip()]
@@ -933,8 +958,9 @@ class ProjectRepo:
                     if group in criterion_by_id:
                         c = criterion_by_id[group]
                         verdict = Verdict.ACCEPT if c.kind == "include" else Verdict.REJECT
+                        final_bib_key = final_by_full.get(full_fingerprint(_work_ref(w)), w.bib_key)
                         decision = Decision(
-                            work_id=w.id,
+                            bib_key=final_bib_key,
                             researcher_id=researcher_id,
                             verdict=verdict,
                             criterion_id=c.id,
@@ -963,7 +989,6 @@ class ProjectRepo:
             self.save_set(Set(id="00-start", kind=SetKind.START, iteration=0, works=[]))
 
     def import_start_set(self, works: list[Work]) -> Set:
-        works = [_canonicalize_work_id(w) for w in works]
         start = Set(id="00-start", kind=SetKind.START, iteration=0, works=works)
         self.save_set(start)
         return start
