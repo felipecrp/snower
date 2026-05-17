@@ -138,6 +138,21 @@ section {
     justify-content: flex-end;
     gap: 0.5rem;
     margin-top: 0.25rem;
+
+    button {
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      border: 1px solid #d1d5db;
+      background: white;
+      cursor: pointer;
+      font-size: 0.9rem;
+
+      &.primary {
+        background: #2563eb;
+        color: white;
+        border-color: #2563eb;
+      }
+    }
   }
 }
 
