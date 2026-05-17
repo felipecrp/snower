@@ -20,3 +20,17 @@ def get_provider(project: Project) -> Provider:
         if cfg.name == "openalex":
             return OpenAlexProvider(email=cfg.options.get("email") or None)
     return OpenAlexProvider()
+
+
+def get_enrichment_provider(project: Project) -> Provider:
+    """Always OpenAlex — used at import time to fill missing fields like abstract.
+
+    Picks up the `email` option from a configured `openalex` entry if any, so the
+    polite API pool is used even when snowballing runs against another provider.
+    """
+    email = None
+    for cfg in project.providers:
+        if cfg.name == "openalex":
+            email = cfg.options.get("email") or None
+            break
+    return OpenAlexProvider(email=email)

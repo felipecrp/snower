@@ -46,7 +46,10 @@ class DescribeImportBib:
 
         result = runner.invoke(app, ["import-bib", str(bib_path), "-p", str(project_dir)])
         assert result.exit_code == 0
-        assert (project_dir / "sets" / "00-start" / "articles.bib").exists()
+        assert (project_dir / "sets" / "00-start" / "set.yml").exists()
+        bib_files = list((project_dir / "works").glob("*.bib"))
+        assert len(bib_files) == 1
+        assert bib_files[0].name.startswith("wohlin2014")
 
     def it_fails_when_project_missing(self, tmp_path: Path):
         bib_path = tmp_path / "sample.bib"

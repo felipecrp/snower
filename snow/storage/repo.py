@@ -5,10 +5,15 @@ A project on disk looks like:
     <project>/
         project.yml
         relations.yml
+        keys.yml
+        snowballing.yml
+        works/
+            wohlin2014snowballing.bib    # one entry per file, shared across sets
+            ...
         sets/
             00-start/
-                articles.bib
-                decisions.yml
+                set.yml                  # includes `works: [bib_key, ...]`
+                decisions_*.yml
             01-backward/
                 ...
 
@@ -53,7 +58,7 @@ KEYS_FILE = "keys.yml"
 SNOWBALLING_FILE = "snowballing.yml"
 SETS_DIR = "sets"
 SET_FILE = "set.yml"
-ARTICLES_FILE = "articles.bib"
+WORKS_DIR = "works"
 RESOLUTIONS_FILE = "resolutions.yml"
 DECISIONS_PREFIX = "decisions_"
 
@@ -122,10 +127,6 @@ class SetPaths:
     def metadata(self) -> Path:
         return self.root / SET_FILE
 
-    @property
-    def articles(self) -> Path:
-        return self.root / ARTICLES_FILE
-
 
 class ProjectRepo:
     """Filesystem-backed repository for a single project."""
@@ -161,6 +162,44 @@ class ProjectRepo:
         orphan = [p.name for p in sets_dir.iterdir() if p.is_dir() and _ORPHAN_DIR_PATTERN.match(p.name)]
         return regular + orphan
 
+    def works_dir(self) -> Path:
+        return self.root / WORKS_DIR
+
+    def work_path(self, bib_key: str) -> Path:
+        return self.works_dir() / f"{bib_key}.bib"
+
+    def load_work(self, bib_key: str) -> Work | None:
+        path = self.work_path(bib_key)
+        if not path.exists():
+            return None
+        entries = bib.load(path)
+        return entries[0] if entries else None
+
+    def save_work(self, work: Work) -> None:
+        if not work.bib_key:
+            raise ValueError("Cannot save work without bib_key")
+        self.works_dir().mkdir(parents=True, exist_ok=True)
+        bib.dump([work], self.work_path(work.bib_key))
+
+    def merge_with_library(self, incoming: list[Work]) -> list[Work]:
+        """Fill missing fields from `works/<bib_key>.bib` when the paper is already known.
+
+        Looked up by canonical work_id via keys.yml. The on-disk version wins for
+        any field it already has; the incoming version contributes only to gaps.
+        Lets the OpenAlex enrichment that follows short-circuit on cache hits.
+        """
+        canonical = [_canonicalize_work_id(w) for w in incoming]
+        id_to_key = {wid: key for key, wid in self.load_keys().items()}
+        merged: list[Work] = []
+        for w in canonical:
+            key = id_to_key.get(w.id)
+            cached = self.load_work(key) if key else None
+            if cached is None:
+                merged.append(w)
+            else:
+                merged.append(_fill_missing_work_fields(cached, w))
+        return merged
+
     def load_set(self, set_id: str) -> Set:
         regular_match = _SET_DIR_PATTERN.match(set_id)
         orphan_match = _ORPHAN_DIR_PATTERN.match(set_id)
@@ -176,7 +215,14 @@ class ProjectRepo:
         else:
             iteration = int(metadata.get("iteration", 0))
             kind = SetKind.ORPHAN
-        works = bib.load(paths.articles)
+        bib_keys = list(metadata.get("works") or [])
+        works: list[Work] = []
+        for key in bib_keys:
+            w = self.load_work(key)
+            if w is None:
+                logger.warning("Set %s lists bib_key %s but %s is missing", set_id, key, self.work_path(key))
+                continue
+            works.append(w)
         self._merge_snowball_timestamps(works)
         return Set(
             id=set_id,
@@ -188,16 +234,16 @@ class ProjectRepo:
     def save_set(self, s: Set) -> None:
         paths = self.set_dir(s.id)
         paths.root.mkdir(parents=True, exist_ok=True)
-        yml.dump(
-            s.model_dump(
-                mode="json",
-                include={"id", "kind", "iteration"},
-                exclude_none=True,
-            ),
-            paths.metadata,
-        )
         self._renormalize_keys(s.works)
-        bib.dump(s.works, paths.articles)
+        for w in s.works:
+            self.save_work(w)
+        metadata = {
+            "id": s.id,
+            "kind": s.kind.value,
+            "iteration": s.iteration,
+            "works": [w.bib_key for w in s.works],
+        }
+        yml.dump(metadata, paths.metadata)
 
     def _next_set_index(self) -> int:
         ids = [sid for sid in self.list_set_ids() if _SET_DIR_PATTERN.match(sid)]
@@ -707,106 +753,112 @@ class ProjectRepo:
             for d in to_move:
                 self.save_researcher_decision(to_set_id, d)
 
-    def _sync_orphan_direction(
-        self,
-        source_set_ids: list[str],
-        direction: str,
-        is_connected: set[str],
-    ) -> None:
-        """Move disconnected works from source sets to the orphan set; recover connected works back."""
-        orphan_set_id = "orphan"
-        try:
-            orphan_set = self.load_set(orphan_set_id)
-        except FileNotFoundError:
-            orphan_set = Set(id=orphan_set_id, kind=SetKind.ORPHAN, iteration=0, works=[])
-
-        # Step 1: Return recovered works from orphan set to their origins.
-        orphan_remaining: list[Work] = []
-        for w in orphan_set.works:
-            if w.extra.get("_snow_direction") != direction or w.bib_key not in is_connected:
-                orphan_remaining.append(w)
-                continue
-            origin_id = w.extra.get("_snow_origin")
-            returned = False
-            if origin_id:
-                try:
-                    origin_set = self.load_set(origin_id)
-                    if w.id not in {ow.id for ow in origin_set.works}:
-                        restored = w.model_copy(deep=True)
-                        restored.extra.pop("_snow_origin", None)
-                        restored.extra.pop("_snow_direction", None)
-                        origin_set.works.append(restored)
-                        self.save_set(origin_set)
-                        self._move_decisions_between(w.id, orphan_set_id, origin_id)
-                        returned = True
-                        logger.info("Returned work %s from orphan to %s", w.bib_key, origin_id)
-                except (FileNotFoundError, ValueError):
-                    pass
-            if not returned:
-                orphan_remaining.append(w)
-        orphan_set.works = orphan_remaining
-
-        # Step 2: Move disconnected works from source sets to orphan.
-        orphan_ids = {w.id for w in orphan_set.works}
-        new_orphans: list[Work] = []
-
-        for source_id in source_set_ids:
-            source = self.load_set(source_id)
-            to_keep: list[Work] = []
-            to_orphan: list[Work] = []
-            for w in source.works:
-                if w.bib_key in is_connected:
-                    to_keep.append(w)
-                else:
-                    marked = w.model_copy(deep=True)
-                    marked.extra["_snow_origin"] = source_id
-                    marked.extra["_snow_direction"] = direction
-                    to_orphan.append(marked)
-
-            if to_orphan:
-                source.works = to_keep
-                self.save_set(source)
-                for w in to_orphan:
-                    if w.id not in orphan_ids:
-                        new_orphans.append(w)
-                        orphan_ids.add(w.id)
-                        self._move_decisions_between(w.id, source_id, orphan_set_id)
-                        logger.info("Orphaned work %s from %s", w.bib_key, source_id)
-
-        orphan_set.works = orphan_remaining + new_orphans
-        self.save_set(orphan_set)
-
     def recalculate_orphans(self) -> None:
-        """Rebalance backward/forward sets and the orphan set based on current consensus.
+        """Rebalance backward/forward sets and the orphan set from the citation graph.
 
-        A paper found by backward snowballing is orphaned when no accepted paper cites it.
-        A paper found by forward snowballing is orphaned when it cites no accepted paper.
-        Works carry _snow_origin (original set) and _snow_direction in their extra fields.
-        They are returned when they regain a connection to an accepted paper.
+        A backward-set paper is connected iff some consensus-accepted paper cites it.
+        A forward-set paper is connected iff it cites some consensus-accepted paper.
+        Disconnected works move to the orphan set. Orphans that regain a connection
+        return to the earliest valid iteration set (accepting_paper.iteration + 1
+        with the matching kind), creating that set if needed.
         """
         regular_ids = [sid for sid in self.list_set_ids() if _SET_DIR_PATTERN.match(sid)]
         regular_sets = {sid: self.load_set(sid) for sid in regular_ids}
 
-        # Compute consensus-accepted bib_keys across all regular sets.
         accepted_bib_keys: set[str] = set()
+        bib_key_iteration: dict[str, int] = {}
         for sid, s in regular_sets.items():
             decisions, _ = self.load_decisions(sid)
-            vote_counts: dict[str, dict[str, int]] = defaultdict(lambda: {"accept": 0, "reject": 0})
+            votes: dict[str, dict[str, int]] = defaultdict(lambda: {"accept": 0, "reject": 0})
             for d in decisions:
-                vote_counts[d.work_id]["accept" if d.verdict == Verdict.ACCEPT else "reject"] += 1
+                votes[d.work_id]["accept" if d.verdict == Verdict.ACCEPT else "reject"] += 1
             for w in s.works:
-                if vote_counts[w.id]["accept"] > vote_counts[w.id]["reject"]:
+                bib_key_iteration[w.bib_key] = s.iteration
+                if votes[w.id]["accept"] > votes[w.id]["reject"]:
                     accepted_bib_keys.add(w.bib_key)
 
         relations = self.load_relations()
         cited_by_accepted = {r.cited_bib_key for r in relations if r.citing_bib_key in accepted_bib_keys}
         cites_accepted = {r.citing_bib_key for r in relations if r.cited_bib_key in accepted_bib_keys}
 
-        backward_ids = [sid for sid in regular_ids if regular_sets[sid].kind == SetKind.BACKWARD]
-        forward_ids = [sid for sid in regular_ids if regular_sets[sid].kind == SetKind.FORWARD]
+        orphan_id = "orphan"
+        try:
+            orphan_set = self.load_set(orphan_id)
+        except FileNotFoundError:
+            orphan_set = Set(id=orphan_id, kind=SetKind.ORPHAN, iteration=0, works=[])
 
-        self._sync_orphan_direction(backward_ids, "backward", cited_by_accepted)
-        self._sync_orphan_direction(forward_ids, "forward", cites_accepted)
+        # Step 1: orphan disconnected works from regular backward/forward sets.
+        existing_orphan_ids = {w.id for w in orphan_set.works}
+        for sid, s in regular_sets.items():
+            if s.kind == SetKind.BACKWARD:
+                connected = cited_by_accepted
+            elif s.kind == SetKind.FORWARD:
+                connected = cites_accepted
+            else:
+                continue
+            keep: list[Work] = []
+            to_orphan: list[Work] = []
+            for w in s.works:
+                if w.bib_key in connected:
+                    keep.append(w)
+                else:
+                    to_orphan.append(w)
+            if not to_orphan:
+                continue
+            s.works = keep
+            self.save_set(s)
+            for w in to_orphan:
+                if w.id not in existing_orphan_ids:
+                    orphan_set.works.append(w)
+                    existing_orphan_ids.add(w.id)
+                self._move_decisions_between(w.id, sid, orphan_id)
+                logger.info("Orphaned work %s from %s", w.bib_key, sid)
+
+        # Step 2: return reconnected orphans to the earliest valid iteration set.
+        remaining_orphans: list[Work] = []
+        for w in orphan_set.works:
+            target = self._earliest_target_set_for_orphan(
+                w.bib_key, accepted_bib_keys, bib_key_iteration, relations,
+            )
+            if target is None:
+                remaining_orphans.append(w)
+                continue
+            target_id, target_kind, target_iter = target
+            try:
+                target_set = self.load_set(target_id)
+            except FileNotFoundError:
+                target_set = Set(id=target_id, kind=target_kind, iteration=target_iter, works=[])
+            if w.id not in {tw.id for tw in target_set.works}:
+                target_set.works.append(w)
+                self.save_set(target_set)
+                self._move_decisions_between(w.id, orphan_id, target_id)
+                logger.info("Returned work %s from orphan to %s", w.bib_key, target_id)
+
+        orphan_set.works = remaining_orphans
+        self.save_set(orphan_set)
+
+    def _earliest_target_set_for_orphan(
+        self,
+        bib_key: str,
+        accepted_bib_keys: set[str],
+        bib_key_iteration: dict[str, int],
+        relations: list[Relation],
+    ) -> tuple[str, SetKind, int] | None:
+        candidates: list[tuple[int, str]] = []  # (target_iteration, kind)
+        for r in relations:
+            if r.cited_bib_key == bib_key and r.citing_bib_key in accepted_bib_keys:
+                it = bib_key_iteration.get(r.citing_bib_key)
+                if it is not None:
+                    candidates.append((it + 1, "backward"))
+            if r.citing_bib_key == bib_key and r.cited_bib_key in accepted_bib_keys:
+                it = bib_key_iteration.get(r.cited_bib_key)
+                if it is not None:
+                    candidates.append((it + 1, "forward"))
+        if not candidates:
+            return None
+        candidates.sort()  # min iteration; "backward" < "forward" lexicographically
+        it, kind = candidates[0]
+        return f"{it:02d}-{kind}", SetKind(kind), it
 
     def import_bib_to_set(
         self,
@@ -896,6 +948,7 @@ class ProjectRepo:
     def ensure_scaffolding(self) -> None:
         """Idempotently create the directory layout and the empty start set."""
         self.sets_dir().mkdir(parents=True, exist_ok=True)
+        self.works_dir().mkdir(parents=True, exist_ok=True)
         if not self.relations_path().exists():
             self.save_relations([])
         if not self.set_dir("00-start").root.exists():

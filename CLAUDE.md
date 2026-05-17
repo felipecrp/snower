@@ -34,68 +34,29 @@ uv run pytest
 - **English for code**, Portuguese for conversation.
 - **Explain before non-trivial edits.**
 
-## Project File Layout
+## Project Layout
 
-```
-snow/                  # Python package
-  cli.py               # snow init / import-bib / serve
-  api/
-    app.py             # FastAPI factory
-    routers/           # project.py, sets.py, decisions.py, snowballing.py
-    state.py           # get_repo, get_active_researcher dependencies
-  domain/
-    models.py          # Work, Set, Decision, Resolution, Relation, Project, …
-    identity.py        # work_id(), mint_bib_key()
-  storage/
-    repo.py            # ProjectRepo (all disk I/O)
-    bib.py             # BibTeX ↔ Work
-    yml.py             # ruamel.yaml wrapper
-  providers/
-    base.py            # Provider ABC
-    scholarly_provider.py  # Google Scholar via scholarly
-ui/                    # Angular SPA
-  src/app/
-    models.ts          # TypeScript interfaces mirroring Python models
-    api.service.ts     # HTTP client
-    triage/            # Main screen
-    settings/          # Researcher + criteria management
-electron/main.js       # Electron main process
-tests/                 # Mirrors snow/ hierarchy
-doc/                   # Project documentation
-```
+See `doc/architecture.md` for the full module tree and on-disk storage layout.
+
+Key entry points:
+- `snow/storage/repo.py` — `ProjectRepo`, all disk I/O
+- `snow/domain/identity.py` — `work_id()`, `mint_bib_key()`
+- `snow/providers/factory.py` — `get_provider()` for snowballing; `get_enrichment_provider()` (always OpenAlex, used at import)
 
 ## Data Identity
 
-Every paper gets a stable `work_id` = `sha1:<hex16>` of `surname|year|title`
-(Unicode-normalized, diacritics removed). DOI is metadata only, never part of
-identity — so enriching a paper with a DOI later doesn't change its `work_id`
-or decisions.
-
-BibTeX keys follow `<surname><year><slug>` where `slug` is the first two
-title words of 5+ characters (e.g. `wohlin2014snowballingsystematic`). When
-two different works collide on the same surname+year+slug, a short hash of
-the full title is appended (`wohlin2014snowballingstudies_8a2b`), deterministic
-across clients. Falls back to `anon` / `nd` / `untitled` for missing fields.
-The global registry is `keys.yml`.
+Every paper has a stable `work_id = sha1:<hex16>` derived from `surname|year|title` (Unicode-normalized). DOI is metadata only. BibTeX keys follow `<surname><year><slug>`; the global registry is `keys.yml`. See `doc/data-model.md` for details.
 
 ## Snowballing Logic
 
-- Papers from sets at **iteration N** feed into sets at **iteration N+1**.
+- Papers from iteration N feed into iteration N+1.
 - `POST /api/snowballing/{backward|forward}` is the global trigger.
-- It skips papers already logged in `snowballing.yml` for that direction.
-- Provider: `ScholarlyProvider` (Google Scholar scraping — CAPTCHA risk on large batches).
-- OpenAlex and Semantic Scholar providers also available.
+- Papers already in `snowballing.yml` are skipped.
+- Default enrichment provider: OpenAlex (fills missing fields at import without overwriting existing ones).
 
 ## Orphan Sets
 
-When a consensus-accepted paper that was already snowballed gets rejected, its "children" in backward/forward sets may lose their connection to the review corpus:
-
-- A **backward** set paper is orphaned when no consensus-accepted paper cites it (verified via `relations.yml`).
-- A **forward** set paper is orphaned when it cites no consensus-accepted paper.
-- Orphaned papers move to the `orphan` set (kind `"orphan"`, directory `sets/orphan/`).
-- Papers carry `_snow_origin` (original set ID) and `_snow_direction` (`"backward"`/`"forward"`) in their BibTeX `extra` fields.
-- Orphans are **returned** to their origin set automatically when they regain a connection (e.g., when a paper that cites them is accepted again).
-- `recalculate_orphans()` is called by `decisions.py` after every upsert or delete.
+Backward/forward papers that lose their connection to the consensus-accepted graph move to `sets/orphan/`. Orphans return to the earliest valid iteration set when they regain a connection. Membership is recomputed from `relations.yml` + consensus on every call to `recalculate_orphans()`. See `doc/architecture.md` for details.
 
 ## Multi-researcher
 
@@ -111,25 +72,9 @@ When a consensus-accepted paper that was already snowballed gets rejected, its "
 - Ties and papers with no votes are hidden.
 - Sidebar shows `X/Y` (consensus-accepted / total) per set.
 
-## API Summary
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/project` | Project config |
-| PUT | `/api/project/researchers` | Replace researcher list (rename via `previous_id`) |
-| PUT | `/api/project/criteria` | Replace criterion list |
-| GET | `/api/sets` | All sets with works |
-| GET | `/api/sets/{id}` | Single set |
-| POST | `/api/sets/{id}/snowballing/{kind}` | Create empty next-iteration set |
-| GET | `/api/sets/{id}/decisions` | All decisions + resolutions for a set |
-| PUT | `/api/sets/{id}/decisions/{work_id}` | Upsert decision (needs X-Researcher-Id) |
-| DELETE | `/api/sets/{id}/decisions/{work_id}` | Delete decision (needs X-Researcher-Id) |
-| POST | `/api/snowballing/{kind}` | Global snowballing (fetches refs/citations for all unprocessed accepted papers) |
-
 ## What's Not Implemented Yet
 
 - Packaged Electron distribution (dev mode only)
 - Formal resolution UI (Resolution model exists but is not exposed in the UI)
-- Additional providers (Semantic Scholar, OpenAlex)
 - Proxy configuration for scholarly (needed for large batches)
 - Export to consolidated `.bib` of accepted papers

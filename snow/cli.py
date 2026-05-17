@@ -10,7 +10,7 @@ import uvicorn
 
 from snow.api.app import create_app
 from snow.domain.models import Project
-from snow.providers.factory import get_provider
+from snow.providers.factory import get_enrichment_provider
 from snow.storage import bib
 from snow.storage.repo import ProjectRepo
 
@@ -55,7 +55,8 @@ def import_bib(
     if not works:
         typer.echo(f"{bib_path}: parsed 0 entries — file may be empty or malformed.", err=True)
         raise typer.Exit(code=1)
-    works = get_provider(repo.load_project()).enrich_works(works)
+    works = repo.merge_with_library(works)
+    works = get_enrichment_provider(repo.load_project()).enrich_works(works)
     start = repo.import_start_set(works)
     typer.echo(f"Imported {len(start.works)} works into {start.id}")
 

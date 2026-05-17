@@ -25,11 +25,10 @@ One iteration of the snowballing process.
 
 | Field | Type | Notes |
 |---|---|---|
-| `id` | `str` | Pattern: `NN-kind`, e.g. `00-start`, `01-backward` |
-| `kind` | `SetKind` | `start`, `backward`, or `forward` |
+| `id` | `str` | Pattern: `NN-kind`, e.g. `00-start`, `01-backward`, or `orphan` |
+| `kind` | `SetKind` | `start`, `backward`, `forward`, or `orphan` |
 | `iteration` | `int` | 0 for start, 1 for first round, etc. |
-| `parent_set_id` | `str \| None` | The set that triggered this one |
-| `works` | `list[Work]` | Papers in this set |
+| `works` | `list[Work]` | Papers in this set (loaded from `works/<bib_key>.bib`) |
 
 ### Decision
 A single researcher's triage verdict for one paper in one set.
@@ -137,10 +136,14 @@ criteria:
 id: 01-backward
 kind: backward
 iteration: 1
-parent_set_id: 00-start
+works:
+  - wohlin2014snowballingsystematic
+  - kitchenham2007guidelines
 ```
 
-### `sets/NN-kind/decisions.yml`
+Sets list only the `bib_key`s of their papers; full BibTeX data lives in `works/<bib_key>.bib` and is shared across all sets that reference the same paper.
+
+### `sets/NN-kind/decisions_<researcher_id>.yml`
 ```yaml
 decisions:
   - work_id: doi:10.1145/3180155.3180238

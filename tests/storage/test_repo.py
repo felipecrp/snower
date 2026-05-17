@@ -97,7 +97,9 @@ class DescribeProjectRepoSets:
         assert start.id == "00-start"
         assert start.kind == SetKind.START
         assert start.iteration == 0
-        assert (tmp_path / "proj" / "sets" / "00-start" / "articles.bib").exists()
+        assert (tmp_path / "proj" / "sets" / "00-start" / "set.yml").exists()
+        for w in start.works:
+            assert (tmp_path / "proj" / "works" / f"{w.bib_key}.bib").exists()
 
     def it_lists_set_ids_sorted(self, tmp_path: Path, project: Project, sample_works: list[Work]):
         repo = ProjectRepo(tmp_path / "proj")
@@ -294,6 +296,134 @@ class DescribeProjectRepoKeyMinting:
         )
         text = (tmp_path / "proj" / "keys.yml").read_text()
         assert text.index("alpha2020") < text.index("zeta2020")
+
+
+class DescribeWorksLibrary:
+    def it_stores_each_paper_once_across_sets(self, tmp_path: Path, project: Project):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        w = Work(
+            id="sha1:7775895baced66ce",
+            bib_key="",
+            title="Shared Paper",
+            authors=["Doe, J"],
+            year=2020,
+            doi="10/shared",
+        )
+        start = repo.import_start_set([w])
+        canonical = start.works[0]
+        repo.save_set(ReviewSet(
+            id="01-backward", kind=SetKind.BACKWARD, iteration=1, works=[canonical],
+        ))
+
+        bib_files = list((tmp_path / "proj" / "works").glob("*.bib"))
+        assert len(bib_files) == 1
+        assert canonical.bib_key in (tmp_path / "proj" / "sets" / "00-start" / "set.yml").read_text()
+        assert canonical.bib_key in (tmp_path / "proj" / "sets" / "01-backward" / "set.yml").read_text()
+
+    def it_propagates_enrichment_to_all_sets_via_shared_file(self, tmp_path: Path, project: Project):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        bare = Work(id="sha1:placeholder", bib_key="", title="P", authors=["A, A"], year=2020)
+        start = repo.import_start_set([bare])
+        repo.save_set(ReviewSet(
+            id="01-backward", kind=SetKind.BACKWARD, iteration=1, works=[start.works[0]],
+        ))
+
+        enriched = start.works[0].model_copy(update={
+            "abstract": "Filled by OpenAlex",
+            "doi": "10/p",
+        })
+        repo.save_work(enriched)
+
+        for sid in ("00-start", "01-backward"):
+            reloaded = repo.load_set(sid)
+            assert reloaded.works[0].abstract == "Filled by OpenAlex"
+            assert reloaded.works[0].doi == "10/p"
+
+    def it_merges_with_library_fills_only_gaps(self, tmp_path: Path, project: Project):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        cached = Work(
+            id="sha1:7775895baced66ce",
+            bib_key="",
+            title="P",
+            authors=["Doe, J"],
+            year=2020,
+            doi="10/p",
+            abstract="Cached abstract",
+        )
+        repo.import_start_set([cached])
+
+        incoming = Work(
+            id="sha1:7775895baced66ce",
+            bib_key="garbage",
+            title="P",
+            authors=["Doe, J"],
+            year=2020,
+            url="https://example.com/p",
+        )
+
+        merged = repo.merge_with_library([incoming])
+
+        assert merged[0].abstract == "Cached abstract"
+        assert merged[0].doi == "10/p"
+        assert merged[0].url == "https://example.com/p"
+
+
+class DescribeRecalculateOrphans:
+    def _setup_two_sets(self, repo):
+        accepted = Work(id="sha1:41eaadf616eef77b", bib_key="", title="Accepted",
+                        authors=["A, A"], year=2020, doi="10/a")
+        ref = Work(id="sha1:bca4065a2d0d87ea", bib_key="", title="Ref",
+                   authors=["B, B"], year=2021, doi="10/b")
+        repo.save_set(ReviewSet(id="00-start", kind=SetKind.START, iteration=0, works=[accepted]))
+        repo.save_set(ReviewSet(id="01-backward", kind=SetKind.BACKWARD, iteration=1, works=[ref]))
+        accepted_persisted = repo.load_set("00-start").works[0]
+        ref_persisted = repo.load_set("01-backward").works[0]
+        repo.save_relations([Relation(
+            citing_bib_key=accepted_persisted.bib_key,
+            cited_bib_key=ref_persisted.bib_key,
+        )])
+        return accepted_persisted, ref_persisted
+
+    def it_moves_disconnected_backward_works_to_orphan_set(
+        self, tmp_path: Path, project: Project
+    ):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        accepted, ref = self._setup_two_sets(repo)
+        repo.save_decisions("00-start", [_decision(accepted.id, "r1", Verdict.ACCEPT)])
+
+        # First: ref is connected → stays in 01-backward.
+        repo.recalculate_orphans()
+        assert len(repo.load_set("01-backward").works) == 1
+
+        # Reject → ref becomes orphan.
+        repo.save_decisions("00-start", [_decision(accepted.id, "r1", Verdict.REJECT)])
+        repo.recalculate_orphans()
+
+        assert len(repo.load_set("01-backward").works) == 0
+        assert {w.id for w in repo.load_set("orphan").works} == {ref.id}
+
+    def it_returns_orphan_to_earliest_valid_iteration_set_when_reconnected(
+        self, tmp_path: Path, project: Project
+    ):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        accepted, ref = self._setup_two_sets(repo)
+
+        # Reject → ref becomes orphan.
+        repo.save_decisions("00-start", [_decision(accepted.id, "r1", Verdict.REJECT)])
+        repo.recalculate_orphans()
+        assert {w.id for w in repo.load_set("orphan").works} == {ref.id}
+
+        # Re-accept → ref returns to 01-backward.
+        repo.save_decisions("00-start", [_decision(accepted.id, "r1", Verdict.ACCEPT)])
+        repo.recalculate_orphans()
+
+        assert repo.load_set("orphan").works == []
+        assert {w.id for w in repo.load_set("01-backward").works} == {ref.id}
 
 
 class DescribeProjectRepoRelations:
