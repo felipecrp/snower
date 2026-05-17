@@ -205,7 +205,20 @@ export class SnowballingComponent {
         this.decisions.set(r.decisions);
         this.projectSvc.updateDecisionsForSet(s.id, r.decisions);
       },
-      error: (e) => this.error.set(`Failed to load decisions: ${e.message}`),
+      error: (e) => {
+        if (e.status === 409) {
+          this.projectSvc.bootstrapWorkspace();
+          this.projectSvc.refresh();
+          const currentSetId = this.currentSet()?.id;
+          setTimeout(() => {
+            if (currentSetId && this.currentSet()?.id === currentSetId) {
+              this.selectSet(this.currentSet()!);
+            }
+          }, 500);
+        } else {
+          this.error.set(`Failed to load decisions: ${e.message}`);
+        }
+      },
     });
   }
 

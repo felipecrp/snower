@@ -77,15 +77,32 @@ export class ProjectService {
         this.project.set(p);
         document.title = `Snow - ${p.name}`;
       },
-      error: (e) => this.error.set(`Failed to load project: ${e.message}`),
+      error: (e) => this.handleProjectError(e),
     });
     this.api.listSets().subscribe({
       next: (sets) => {
         this.sets.set(sets);
         sets.forEach((s) => this.loadDecisionsForSet(s.id));
       },
-      error: (e) => this.error.set(`Failed to load sets: ${e.message}`),
+      error: (e) => this.handleProjectError(e),
     });
+  }
+
+  private handleProjectError(error: any): void {
+    if (error.status === 409) {
+      const lastPath = this.lastProjectPath();
+      if (lastPath) {
+        this.api.openProject(lastPath).subscribe({
+          next: (opened) => {
+            this.applyWorkspace(opened);
+            this.refresh();
+          },
+          error: () => this.error.set('Backend restarted and last project is unavailable'),
+        });
+        return;
+      }
+    }
+    this.error.set(`Failed to load project: ${error.message}`);
   }
 
   private finishBootstrap(w: WorkspaceInfo | null): void {
@@ -112,6 +129,7 @@ export class ProjectService {
   loadDecisionsForSet(setId: string): void {
     this.api.getDecisions(setId).subscribe({
       next: (r) => this.allDecisions.update((all) => ({ ...all, [setId]: r.decisions })),
+      error: (e) => this.handleProjectError(e),
     });
   }
 
