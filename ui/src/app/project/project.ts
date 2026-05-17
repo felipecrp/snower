@@ -30,6 +30,7 @@ interface PhaseRow extends Phase {
 
 type Dialog = 'new' | 'open' | null;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const PROJECT_NAME_RE = /^[a-zA-Z0-9_@-]+$/;
 
 @Component({
   selector: 'app-project',
@@ -62,6 +63,13 @@ export class ProjectComponent {
   readonly dialogName = signal('');
   readonly dialogDescription = signal('');
   readonly dialogWorking = signal(false);
+  readonly dialogResolvedPath = computed(() => {
+    const kind = this.dialog();
+    const path = this.dialogPath().trim();
+    if (kind !== 'new') return path;
+    const name = this.dialogName().trim();
+    return path && name ? this.joinPath(path, name) : '';
+  });
 
   readonly criterionKinds: CriterionKind[] = ['include', 'exclude'];
 
@@ -127,11 +135,18 @@ export class ProjectComponent {
 
   confirmDialog(): void {
     const kind = this.dialog();
-    const path = this.dialogPath().trim();
+    const path = this.dialogResolvedPath().trim();
     if (!path) { this.error.set('Path is required.'); return; }
-    if (kind === 'new' && !this.dialogName().trim()) {
-      this.error.set('Project name is required.');
-      return;
+    if (kind === 'new') {
+      const name = this.dialogName().trim();
+      if (!name) {
+        this.error.set('Project name is required.');
+        return;
+      }
+      if (!PROJECT_NAME_RE.test(name)) {
+        this.error.set('Project name must use only letters, digits, `_`, `-`, or `@`.');
+        return;
+      }
     }
     this.dialogWorking.set(true);
     this.error.set(null);
@@ -153,6 +168,20 @@ export class ProjectComponent {
         this.error.set(this.errorMessage(e));
       },
     });
+  }
+
+  async pickDirectory(): Promise<void> {
+    if (!window.snowShell?.pickDirectory) {
+      this.error.set('Directory picker is only available in Electron.');
+      return;
+    }
+    const kind = this.dialog();
+    const title = kind === 'new' ? 'Choose parent folder' : 'Choose project folder';
+    const defaultPath = (kind === 'new' ? this.dialogPath() : this.dialogResolvedPath()).trim() || undefined;
+    const pickedPath = await window.snowShell.pickDirectory({ title, defaultPath });
+    if (!pickedPath) return;
+    this.dialogPath.set(pickedPath);
+    this.error.set(null);
   }
 
   normalizeId(value: string): string {
@@ -328,6 +357,10 @@ export class ProjectComponent {
 
   private criterionOrder(kind: CriterionKind): number {
     return kind === 'include' ? 0 : 1;
+  }
+
+  private joinPath(base: string, leaf: string): string {
+    return `${base.replace(/[\\/]+$/, '')}/${leaf}`;
   }
 
   private errorMessage(e: unknown): string {

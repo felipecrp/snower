@@ -143,21 +143,43 @@
       <button type="button" (click)="closeDialog()">✕</button>
     </header>
 
-    <label>
-      Path
-      <input type="text" [ngModel]="dialogPath()" (ngModelChange)="dialogPath.set($event)" placeholder="/home/user/my-review" autofocus />
-    </label>
+    <ng-container *ngIf="kind === 'open'; else newProjectFields">
+      <label>
+        Path
+        <input type="text" [ngModel]="dialogResolvedPath()" readonly placeholder="Choose a project folder" autofocus />
+      </label>
+      <div class="actions">
+        <button type="button" (click)="pickDirectory()">Choose project folder…</button>
+      </div>
+    </ng-container>
 
-    <ng-container *ngIf="kind === 'new'">
+    <ng-template #newProjectFields>
+      <label>
+        Parent path
+        <input type="text" [ngModel]="dialogPath()" readonly placeholder="Choose the parent folder" autofocus />
+      </label>
+      <div class="actions">
+        <button type="button" (click)="pickDirectory()">Choose parent folder…</button>
+      </div>
       <label>
         Name
-        <input type="text" [ngModel]="dialogName()" (ngModelChange)="dialogName.set($event)" placeholder="My Systematic Review" />
+        <input
+          type="text"
+          [ngModel]="dialogName()"
+          (ngModelChange)="dialogName.set($event)"
+          placeholder="my-review"
+          pattern="[a-zA-Z0-9_@-]+"
+        />
+      </label>
+      <label>
+        Project path
+        <input type="text" [ngModel]="dialogResolvedPath()" readonly placeholder="/home/user/projects/my-review" />
       </label>
       <label>
         Description <span class="optional">(optional)</span>
         <input type="text" [ngModel]="dialogDescription()" (ngModelChange)="dialogDescription.set($event)" placeholder="Short description" />
       </label>
-    </ng-container>
+    </ng-template>
 
     <div class="dialog-actions">
       <button (click)="closeDialog()" [disabled]="dialogWorking()">Cancel</button>

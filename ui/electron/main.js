@@ -1,6 +1,17 @@
-const { app, BrowserWindow, shell } = require('electron');
+const path = require('path');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 
 const TARGET_URL = process.env.SNOW_UI_URL || 'http://localhost:4200';
+
+ipcMain.handle('pick-directory', async (_event, options = {}) => {
+  const result = await dialog.showOpenDialog({
+    title: options.title || 'Choose folder',
+    defaultPath: options.defaultPath || undefined,
+    properties: ['openDirectory'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -10,6 +21,7 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
 
