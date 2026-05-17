@@ -3,7 +3,7 @@
     <h3>Sets</h3>
     <ul>
       <li
-        *ngFor="let s of regularSets(); trackBy: trackById"
+        *ngFor="let s of regularSets(); trackBy: trackBySetId"
         [class.active]="currentSet()?.id === s.id"
         [class.pending]="projectSvc.pendingSetIds().has(s.id)"
         (click)="selectSet(s)"
@@ -81,13 +81,13 @@
       <div class="filters">
         <label class="phase-control" for="active-phase" *ngIf="phases().length">
           phase
-          <select id="active-phase" [ngModel]="activePhase()" (ngModelChange)="activePhase.set($event)">
+          <select id="active-phase" [ngModel]="activePhase()" (ngModelChange)="activePhase.set($event); releaseFilterFocus()">
             <option *ngFor="let p of phases()" [value]="p.id">{{ p.id }}: {{ p.description }}</option>
           </select>
         </label>
         <label class="sort-control" for="sort-field">
           sort by
-          <select id="sort-field" [ngModel]="sortField()" (ngModelChange)="sortField.set($event)">
+          <select id="sort-field" [ngModel]="sortField()" (ngModelChange)="sortField.set($event); releaseFilterFocus()">
             <option value="author">author</option>
             <option value="title">title</option>
             <option value="venue">journal/conference</option>
@@ -100,7 +100,7 @@
             <input
               type="checkbox"
               [checked]="showSelected()"
-              (change)="showSelected.set($any($event.target).checked); visibilityMode.set('custom')"
+              (change)="showSelected.set($any($event.target).checked); visibilityMode.set('custom'); releaseFilterFocus()"
             />
             accepted
           </label>
@@ -108,7 +108,7 @@
             <input
               type="checkbox"
               [checked]="showRejected()"
-              (change)="showRejected.set($any($event.target).checked); visibilityMode.set('custom')"
+              (change)="showRejected.set($any($event.target).checked); visibilityMode.set('custom'); releaseFilterFocus()"
             />
             rejected
           </label>
@@ -116,12 +116,12 @@
             <input
               type="checkbox"
               [checked]="showPending()"
-              (change)="showPending.set($any($event.target).checked); visibilityMode.set('custom')"
+              (change)="showPending.set($any($event.target).checked); visibilityMode.set('custom'); releaseFilterFocus()"
             />
             undecided
           </label>
           <label class="consensus-toggle">
-            <input type="checkbox" [checked]="resultsMode()" (change)="resultsMode.set($any($event.target).checked)" />
+            <input type="checkbox" [checked]="resultsMode()" (change)="resultsMode.set($any($event.target).checked); releaseFilterFocus()" />
             final result
           </label>
         </div>
@@ -135,11 +135,11 @@
 
       <div class="works">
         <article
-          *ngFor="let w of filteredWorks(); trackBy: trackById"
+          *ngFor="let w of filteredWorks(); trackBy: trackByBibKey"
           class="work"
-          [id]="'work-' + w.id"
-          [class.selected]="isSelectedWork(w.id)"
-          (click)="selectWork(w.id)"
+          [id]="'work-' + w.bib_key"
+          [class.selected]="isSelectedWork(w.bib_key)"
+          (click)="selectWork(w.bib_key)"
         >
           <header>
             <div class="header-content">
@@ -190,7 +190,7 @@
           </header>
 
           <div class="snowball-counts"
-               *ngIf="!isWorkExpanded(w.id) && (w.last_backward_snowballed_at || w.last_forward_snowballed_at)">
+               *ngIf="!isWorkExpanded(w.bib_key) && (w.last_backward_snowballed_at || w.last_forward_snowballed_at)">
             <span *ngIf="w.last_backward_snowballed_at" title="backward snowballing">
               ← <ng-container *ngIf="isSnowballInFlight(w, 'backward'); else bwdCount"><span class="spinner inline" aria-hidden="true"></span></ng-container>
               <ng-template #bwdCount>{{ w.last_backward_found ?? '?' }}</ng-template>
@@ -201,7 +201,7 @@
             </span>
           </div>
 
-          <section class="work-details" *ngIf="isWorkExpanded(w.id)">
+          <section class="work-details" *ngIf="isWorkExpanded(w.bib_key)">
             <p class="abstract" *ngIf="w.abstract; else noAbstract">{{ w.abstract }}</p>
             <ng-template #noAbstract>
               <p class="abstract empty">No abstract available.</p>
@@ -226,20 +226,20 @@
 
           <footer class="triage">
             <ng-container *ngIf="resultsMode(); else triageMode">
-              <span class="badge" [class.accept]="consensusFor(w.id) === 'accept'" [class.reject]="consensusFor(w.id) === 'reject'">
-                {{ consensusFor(w.id) === 'accept' ? 'accepted' : 'rejected' }}
+              <span class="badge" [class.accept]="consensusFor(w.bib_key) === 'accept'" [class.reject]="consensusFor(w.bib_key) === 'reject'">
+                {{ consensusFor(w.bib_key) === 'accept' ? 'accepted' : 'rejected' }}
               </span>
               <span class="consensus-votes">
-                {{ voteCountsFor(w.id).selected }} accept · {{ voteCountsFor(w.id).rejected }} reject
+                {{ voteCountsFor(w.bib_key).selected }} accept · {{ voteCountsFor(w.bib_key).rejected }} reject
               </span>
-              <span class="consensus-votes" *ngIf="commentCountFor(w.id) as commentCount">
+              <span class="consensus-votes" *ngIf="commentCountFor(w.bib_key) as commentCount">
                 {{ commentCount }} {{ commentCount === 1 ? 'comment' : 'comments' }}
               </span>
             </ng-container>
             <ng-template #triageMode>
               <ng-container *ngIf="activeResearcherId(); else needResearcher">
                 <select
-                  [ngModel]="decisionFor(w.id)?.criterion_id ?? null"
+                  [ngModel]="decisionFor(w.bib_key)?.criterion_id ?? null"
                   (ngModelChange)="onCriterionChange(w, $event)"
                 >
                   <option [ngValue]="null">— no decision —</option>
@@ -254,7 +254,7 @@
                     </option>
                   </optgroup>
                 </select>
-                <ng-container *ngIf="decisionFor(w.id) as existing">
+                <ng-container *ngIf="decisionFor(w.bib_key) as existing">
                   <span class="badge" [class.accept]="existing.verdict === 'accept'"
                         [class.reject]="existing.verdict === 'reject'">
                     {{ existing.verdict }}
@@ -263,10 +263,10 @@
                 <input
                   type="text"
                   placeholder="note (optional)"
-                  [ngModel]="noteFor(w.id)"
-                  (ngModelChange)="updateNoteDraft(w.id, $event)"
+                  [ngModel]="noteFor(w.bib_key)"
+                  (ngModelChange)="updateNoteDraft(w.bib_key, $event)"
                   (blur)="saveNote(w)"
-                  [disabled]="!decisionFor(w.id)"
+                  [disabled]="!decisionFor(w.bib_key)"
                 />
               </ng-container>
               <ng-template #needResearcher>
@@ -276,12 +276,12 @@
             <button
               type="button"
               class="details-toggle"
-              [attr.aria-expanded]="isWorkExpanded(w.id)"
-              [attr.aria-label]="isWorkExpanded(w.id) ? 'Collapse details' : 'Expand details'"
+              [attr.aria-expanded]="isWorkExpanded(w.bib_key)"
+              [attr.aria-label]="isWorkExpanded(w.bib_key) ? 'Collapse details' : 'Expand details'"
               title="Expand details (f b)"
-              (click)="toggleWorkDetails(w.id); $event.stopPropagation()"
+              (click)="toggleWorkDetails(w.bib_key); $event.stopPropagation()"
             >
-              {{ isWorkExpanded(w.id) ? '−' : '+' }}
+              {{ isWorkExpanded(w.bib_key) ? '−' : '+' }}
             </button>
           </footer>
         </article>
@@ -326,7 +326,7 @@
     />
     <ul>
       <li
-        *ngFor="let c of dialogCriteria(); let i = index; trackBy: trackById"
+        *ngFor="let c of dialogCriteria(); let i = index; trackBy: trackByCriterionId"
         [class.highlighted]="highlightedCriterionIndex() === i"
         (mouseenter)="highlightedCriterionIndex.set(i)"
         (click)="confirmCriterionDialog()"

@@ -45,12 +45,12 @@ export class SnowLogComponent {
       const decisions = allDecisions[s.id] ?? [];
       const voteCounts: Record<string, { accept: number; reject: number }> = {};
       for (const d of decisions) {
-        if (!voteCounts[d.work_id]) voteCounts[d.work_id] = { accept: 0, reject: 0 };
-        if (d.verdict === 'accept') voteCounts[d.work_id].accept++;
-        else voteCounts[d.work_id].reject++;
+        if (!voteCounts[d.bib_id]) voteCounts[d.bib_id] = { accept: 0, reject: 0 };
+        if (d.verdict === 'accept') voteCounts[d.bib_id].accept++;
+        else voteCounts[d.bib_id].reject++;
       }
       for (const work of s.works) {
-        const votes = voteCounts[work.id];
+        const votes = voteCounts[work.bib_key];
         if (!votes || votes.accept <= votes.reject) continue;
         result.push({
           work,

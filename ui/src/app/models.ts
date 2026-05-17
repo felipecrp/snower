@@ -51,7 +51,6 @@ export interface Project {
 }
 
 export interface Work {
-  id: string;
   bib_key: string;
   title: string;
   authors: string[];
@@ -76,7 +75,7 @@ export interface ReviewSet {
 }
 
 export interface Decision {
-  work_id: string;
+  bib_id: string;
   researcher_id: string;
   verdict: Verdict;
   criterion_id?: string | null;
@@ -86,7 +85,7 @@ export interface Decision {
 }
 
 export interface Resolution {
-  work_id: string;
+  bib_id: string;
   verdict: Verdict;
   by: string;
   note?: string | null;

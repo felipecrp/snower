@@ -85,7 +85,7 @@ export class StartSetComponent {
         this.projectSvc.sets.update((all) =>
           all.map((s) => {
             if (s.id !== '00-start') return s;
-            const exists = s.works.findIndex((w) => w.id === importedWork.id);
+            const exists = s.works.findIndex((w) => w.bib_key === importedWork.bib_key);
             const works =
               exists >= 0
                 ? s.works.map((w, i) => (i === exists ? importedWork : w))
@@ -115,6 +115,6 @@ export class StartSetComponent {
     document.getElementById('bib-file-input')?.click();
   }
 
-  trackById = (_: number, x: { id: string }) => x.id;
+  trackById = (_: number, x: Work) => x.bib_key;
   trackByIndex = (i: number) => i;
 }

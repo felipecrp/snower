@@ -15,7 +15,7 @@ import { ProjectService } from '../project.service';
 import { ResearcherService } from '../researcher.service';
 
 type SortField = 'author' | 'title' | 'venue' | 'criterion';
-type CriterionDialog = { verdict: 'accept' | 'reject'; workId: string };
+type CriterionDialog = { verdict: 'accept' | 'reject'; bibId: string };
 type VisibilityMode = 'pending' | 'selected' | 'rejected' | 'all' | 'custom';
 type TriageCounts = { selected: number; rejected: number; total: number; shown: number };
 type PendingWork = { work: Work; status: 'pending' | 'importing' | 'done' | 'error'; error?: string };
@@ -72,7 +72,7 @@ export class SnowballingComponent {
     const showRej = this.showRejected();
     return this.sortWorks(
       set.works.filter((w) => {
-        const verdict = this.decisionFor(w.id)?.verdict;
+        const verdict = this.decisionFor(w.bib_key)?.verdict;
         if (!verdict) return showPend;
         if (verdict === 'accept') return showSel;
         return showRej;
@@ -93,7 +93,7 @@ export class SnowballingComponent {
     let selected = 0;
     let rejected = 0;
     for (const work of set.works) {
-      const verdict = this.decisionFor(work.id)?.verdict;
+      const verdict = this.decisionFor(work.bib_key)?.verdict;
       if (verdict === 'accept') selected += 1;
       if (verdict === 'reject') rejected += 1;
     }
@@ -106,7 +106,7 @@ export class SnowballingComponent {
   });
   readonly selectedWork = computed(() => {
     const works = this.filteredWorks();
-    return works.find((w) => w.id === this.selectedWorkId()) ?? works[0] ?? null;
+    return works.find((w) => w.bib_key === this.selectedWorkId()) ?? works[0] ?? null;
   });
   readonly dialogCriteria = computed(() => {
     const dialog = this.criterionDialog();
@@ -129,7 +129,7 @@ export class SnowballingComponent {
   readonly orphanSet = computed(() => this.sets().find((s) => s.kind === 'orphan') ?? null);
   readonly selectedAccepted = computed(() => {
     const w = this.selectedWork();
-    return !!w && this.consensusFor(w.id) === 'accept';
+    return !!w && this.consensusFor(w.bib_key) === 'accept';
   });
 
   private static readonly LAST_SET_KEY = 'snow:last-set';
@@ -186,14 +186,15 @@ export class SnowballingComponent {
       const works = this.filteredWorks();
       const currentId = untracked(() => this.selectedWorkId());
       if (!currentId || !works.length) return;
-      if (works.some((w) => w.id === currentId)) return;
+      if (works.some((w) => w.bib_key === currentId)) return;
       const allWorks = untracked(() => this.currentSet()?.works ?? []);
-      const originalIdx = allWorks.findIndex((w) => w.id === currentId);
+      const originalIdx = allWorks.findIndex((w) => w.bib_key === currentId);
       const next =
-        works.find((w) => allWorks.findIndex((aw) => aw.id === w.id) > originalIdx) ??
+        [...works].reverse().find((w) => allWorks.findIndex((aw) => aw.bib_key === w.bib_key) < originalIdx) ??
+        works.find((w) => allWorks.findIndex((aw) => aw.bib_key === w.bib_key) > originalIdx) ??
         works[works.length - 1];
-      this.selectedWorkId.set(next.id);
-      setTimeout(() => this.scrollToWork(next.id));
+      this.selectedWorkId.set(next.bib_key);
+      setTimeout(() => this.scrollToWork(next.bib_key));
     });
   }
 
@@ -251,7 +252,7 @@ export class SnowballingComponent {
     for (const work of set.works) {
       const votes = { selected: 0, rejected: 0 };
       for (const d of setDecisions) {
-        if (d.work_id !== work.id) continue;
+        if (d.bib_id !== work.bib_key) continue;
         if (d.verdict === 'accept') votes.selected++;
         else votes.rejected++;
       }
@@ -326,12 +327,13 @@ export class SnowballingComponent {
     this.visibilityMode.set(mode);
     this.showSelected.set(mode === 'selected' || mode === 'all');
     this.showRejected.set(mode === 'rejected' || mode === 'all');
+    this.releaseFilterFocus();
   }
 
   decisionFor(workId: string): Decision | undefined {
     const me = this.activeResearcherId();
     if (!me) return undefined;
-    return this.decisions().find((d) => d.work_id === workId && d.researcher_id === me);
+    return this.decisions().find((d) => d.bib_id === workId && d.researcher_id === me);
   }
 
   consensusFor(workId: string): 'accept' | 'reject' | null {
@@ -345,7 +347,7 @@ export class SnowballingComponent {
     let selected = 0;
     let rejected = 0;
     for (const decision of this.decisions()) {
-      if (decision.work_id !== workId) continue;
+      if (decision.bib_id !== workId) continue;
       if (decision.verdict === 'accept') selected += 1;
       if (decision.verdict === 'reject') rejected += 1;
     }
@@ -354,7 +356,7 @@ export class SnowballingComponent {
 
   commentCountFor(workId: string): number {
     return this.decisions().filter((decision) =>
-      decision.work_id === workId && !!decision.note?.trim(),
+      decision.bib_id === workId && !!decision.note?.trim(),
     ).length;
   }
 
@@ -378,12 +380,12 @@ export class SnowballingComponent {
     if (!set) return;
 
     if (!criterionId) {
-      this.api.deleteDecision(set.id, work.id).subscribe({
+      this.api.deleteDecision(set.id, work.bib_key).subscribe({
         next: () => {
           this.decisions.update((all) =>
-            all.filter((d) => !(d.work_id === work.id && d.researcher_id === me)),
+            all.filter((d) => !(d.bib_id === work.bib_key && d.researcher_id === me)),
           );
-          this.clearDraft(work.id);
+          this.clearDraft(work.bib_key);
           this.error.set(null);
           this.triggerOrphanRecalc();
         },
@@ -401,10 +403,10 @@ export class SnowballingComponent {
       verdict: criterion.kind === 'include' ? 'accept' : 'reject',
       criterion_id: criterion.id,
       phase_id: this.activePhase(),
-      note: this.noteFor(work.id) || null,
+      note: this.noteFor(work.bib_key) || null,
     };
     this.rememberCriterion(body.verdict, criterion.id);
-    this.putDecision(set.id, work.id, body, me, this.fallbackSelectionAfter(work.id));
+    this.putDecision(set.id, work.bib_key, body, me, this.fallbackSelectionAfter(work.bib_key));
   }
 
   runSnowballing(kind: 'both-remaining' | 'backward-remaining' | 'forward-remaining' | 'backward-selected' | 'forward-selected'): void {
@@ -414,7 +416,7 @@ export class SnowballingComponent {
     if (kind === 'backward-selected' || kind === 'forward-selected') {
       const work = this.selectedWork();
       if (!work) { this.error.set('Select a paper first.'); return; }
-      if (this.consensusFor(work.id) !== 'accept') {
+      if (this.consensusFor(work.bib_key) !== 'accept') {
         this.error.set('Snowballing is only available for consensus-accepted papers.');
         return;
       }
@@ -484,7 +486,7 @@ export class SnowballingComponent {
       ? 'last_backward_snowballed_at'
       : 'last_forward_snowballed_at';
     const updater = (w: Work) =>
-      w.id === work.id ? { ...w, [field]: timestamp } as Work : w;
+      w.bib_key === work.bib_key ? { ...w, [field]: timestamp } as Work : w;
     this.currentSet.update((cs) => cs ? { ...cs, works: cs.works.map(updater) } : cs);
     this.projectSvc.sets.update((all) =>
       all.map((s) => ({ ...s, works: s.works.map(updater) })),
@@ -592,7 +594,7 @@ export class SnowballingComponent {
     this.api.importWork('00-start', pending[index].work).subscribe({
       next: (importedWork) => {
         const mergeWork = (works: Work[]): Work[] => {
-          const idx = works.findIndex((w) => w.id === importedWork.id);
+          const idx = works.findIndex((w) => w.bib_key === importedWork.bib_key);
           return idx >= 0
             ? works.map((w, i) => (i === idx ? importedWork : w))
             : [...works, importedWork];
@@ -626,7 +628,7 @@ export class SnowballingComponent {
   }
 
   isSelectedWork(workId: string): boolean {
-    return this.selectedWork()?.id === workId;
+    return this.selectedWork()?.bib_key === workId;
   }
 
   isWorkExpanded(workId: string): boolean {
@@ -643,7 +645,7 @@ export class SnowballingComponent {
   toggleSelectedWorkDetails(): void {
     const work = this.selectedWork();
     if (!work) return;
-    this.toggleWorkDetails(work.id);
+    this.toggleWorkDetails(work.bib_key);
   }
 
   openCriterionDialog(verdict: 'accept' | 'reject'): void {
@@ -659,10 +661,10 @@ export class SnowballingComponent {
       this.error.set(`No ${verdict === 'accept' ? 'include' : 'exclude'} criteria configured.`);
       return;
     }
-    this.selectedWorkId.set(work.id);
-    this.criterionDialog.set({ verdict, workId: work.id });
+    this.selectedWorkId.set(work.bib_key);
+    this.criterionDialog.set({ verdict, bibId: work.bib_key });
     this.criterionQuery.set('');
-    this.criterionNote.set(this.noteFor(work.id));
+    this.criterionNote.set(this.noteFor(work.bib_key));
     this.highlightedCriterionIndex.set(0);
     setTimeout(() => document.getElementById('criterion-search')?.focus());
   }
@@ -704,7 +706,7 @@ export class SnowballingComponent {
       note: this.criterionNote() || null,
     };
     this.rememberCriterion(dialog.verdict, criterion.id);
-    this.putDecision(set.id, dialog.workId, body, me, this.fallbackSelectionAfter(dialog.workId));
+    this.putDecision(set.id, dialog.bibId, body, me, this.fallbackSelectionAfter(dialog.bibId));
     this.closeCriterionDialog();
   }
 
@@ -716,15 +718,15 @@ export class SnowballingComponent {
     }
     const set = this.currentSet();
     if (!set) return;
-    const existing = this.decisionFor(work.id);
+    const existing = this.decisionFor(work.bib_key);
     if (!existing) return;
     const body: DecisionInput = {
       verdict: existing.verdict,
       criterion_id: existing.criterion_id ?? null,
       phase_id: phaseId,
-      note: this.noteFor(work.id) || null,
+      note: this.noteFor(work.bib_key) || null,
     };
-    this.putDecision(set.id, work.id, body, me);
+    this.putDecision(set.id, work.bib_key, body, me);
   }
 
   saveNote(work: Work): void {
@@ -732,11 +734,11 @@ export class SnowballingComponent {
     if (!me) return;
     const set = this.currentSet();
     if (!set) return;
-    const existing = this.decisionFor(work.id);
+    const existing = this.decisionFor(work.bib_key);
     if (!existing) return;
-    const note = this.noteFor(work.id);
+    const note = this.noteFor(work.bib_key);
     if ((note || null) === (existing.note || null)) {
-      this.clearDraft(work.id);
+      this.clearDraft(work.bib_key);
       return;
     }
     const body: DecisionInput = {
@@ -745,24 +747,24 @@ export class SnowballingComponent {
       phase_id: existing.phase_id ?? null,
       note: note || null,
     };
-    this.putDecision(set.id, work.id, body, me);
+    this.putDecision(set.id, work.bib_key, body, me);
   }
 
   private putDecision(
     setId: string,
-    workId: string,
+    bibId: string,
     body: DecisionInput,
     me: string,
     fallbackWorkId: string | null = null,
   ): void {
-    this.api.upsertDecision(setId, workId, body).subscribe({
+    this.api.upsertDecision(setId, bibId, body).subscribe({
       next: (saved) => {
         this.decisions.update((all) => [
-          ...all.filter((d) => !(d.work_id === workId && d.researcher_id === me)),
+          ...all.filter((d) => !(d.bib_id === bibId && d.researcher_id === me)),
           saved,
         ]);
-        this.selectFallbackIfHidden(workId, fallbackWorkId);
-        this.clearDraft(workId);
+        this.selectFallbackIfHidden(bibId, fallbackWorkId);
+        this.clearDraft(bibId);
         this.error.set(null);
         this.triggerOrphanRecalc();
       },
@@ -825,13 +827,13 @@ export class SnowballingComponent {
 
   private fallbackSelectionAfter(workId: string): string | null {
     const works = this.filteredWorks();
-    const index = works.findIndex((w) => w.id === workId);
+    const index = works.findIndex((w) => w.bib_key === workId);
     if (index < 0) return null;
-    return works[index + 1]?.id ?? works[index - 1]?.id ?? null;
+    return works[index + 1]?.bib_key ?? works[index - 1]?.bib_key ?? null;
   }
 
   private selectFallbackIfHidden(workId: string, fallbackWorkId: string | null): void {
-    if (this.filteredWorks().some((w) => w.id === workId)) return;
+    if (this.filteredWorks().some((w) => w.bib_key === workId)) return;
     if (!fallbackWorkId) {
       this.selectedWorkId.set(null);
       return;
@@ -852,11 +854,11 @@ export class SnowballingComponent {
   private moveSelection(delta: number): void {
     const works = this.filteredWorks();
     if (!works.length) return;
-    const currentId = this.selectedWork()?.id;
-    const currentIndex = Math.max(0, works.findIndex((w) => w.id === currentId));
+    const currentId = this.selectedWork()?.bib_key;
+    const currentIndex = Math.max(0, works.findIndex((w) => w.bib_key === currentId));
     const next = works[Math.min(Math.max(currentIndex + delta, 0), works.length - 1)];
-    this.selectedWorkId.set(next.id);
-    this.scrollToWork(next.id);
+    this.selectedWorkId.set(next.bib_key);
+    this.scrollToWork(next.bib_key);
   }
 
   private cycleSortField(): void {
@@ -864,7 +866,7 @@ export class SnowballingComponent {
     this.sortField.set(SORT_FIELDS[(currentIndex + 1) % SORT_FIELDS.length]);
     setTimeout(() => {
       const work = this.selectedWork();
-      if (work) this.scrollToWork(work.id);
+      if (work) this.scrollToWork(work.bib_key);
     });
   }
 
@@ -907,7 +909,21 @@ export class SnowballingComponent {
   private isTypingTarget(target: EventTarget | null): boolean {
     if (!(target instanceof HTMLElement)) return false;
     const tag = target.tagName.toLocaleLowerCase();
-    return target.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select';
+    return target.isContentEditable || tag === 'textarea' || this.isTextEntryControl(target);
+  }
+
+  private isTextEntryControl(target: HTMLElement): boolean {
+    if (target.tagName.toLocaleLowerCase() === 'select') return true;
+    if (target.tagName.toLocaleLowerCase() !== 'input') return false;
+    const input = target as HTMLInputElement;
+    return !['checkbox', 'radio', 'button', 'submit', 'reset'].includes(input.type);
+  }
+
+  releaseFilterFocus(): void {
+    setTimeout(() => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement) active.blur();
+    });
   }
 
   private scrollToWork(workId: string): void {
@@ -941,7 +957,7 @@ export class SnowballingComponent {
     if (field === 'author') return work.authors[0] ?? '';
     if (field === 'title') return work.title;
     if (field === 'venue') return work.venue ?? '';
-    const criterionId = this.decisionFor(work.id)?.criterion_id;
+    const criterionId = this.decisionFor(work.bib_key)?.criterion_id;
     if (!criterionId) return '';
     const criterion = this.findCriterion(criterionId);
     return criterion ? `${criterion.description} ${criterion.id}` : criterionId;
@@ -970,5 +986,7 @@ export class SnowballingComponent {
     return this.api.localPdfUrl(bib_key);
   }
 
-  trackById = (_: number, x: { id: string }) => x.id;
+  trackBySetId = (_: number, x: ReviewSet) => x.id;
+  trackByBibKey = (_: number, x: Work) => x.bib_key;
+  trackByCriterionId = (_: number, x: Criterion) => x.id;
 }

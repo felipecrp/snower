@@ -6,6 +6,8 @@ import { ResearcherService } from './researcher.service';
 
 const LAST_PROJECT_KEY = 'snow:last-project';
 
+type RawDecision = Decision & { bib_key?: string; work_id?: string };
+
 @Injectable({ providedIn: 'root' })
 export class ProjectService {
   private readonly api = inject(ApiService);
@@ -134,12 +136,19 @@ export class ProjectService {
 
   loadDecisionsForSet(setId: string): void {
     this.api.getDecisions(setId).subscribe({
-      next: (r) => this.allDecisions.update((all) => ({ ...all, [setId]: r.decisions })),
+      next: (r) => this.allDecisions.update((all) => ({ ...all, [setId]: this.normalizeDecisions(r.decisions) })),
       error: (e) => this.handleProjectError(e),
     });
   }
 
   updateDecisionsForSet(setId: string, decisions: Decision[]): void {
-    this.allDecisions.update((all) => ({ ...all, [setId]: decisions }));
+    this.allDecisions.update((all) => ({ ...all, [setId]: this.normalizeDecisions(decisions) }));
+  }
+
+  private normalizeDecisions(decisions: RawDecision[]): Decision[] {
+    return decisions.map((d) => ({
+      ...d,
+      bib_id: d.bib_id ?? d.bib_key ?? d.work_id ?? '',
+    }));
   }
 }

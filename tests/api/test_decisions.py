@@ -15,7 +15,7 @@ class DescribeUpsertDecision:
         body = r.json()
         assert body["verdict"] == "accept"
         assert body["researcher_id"] == "alice@example.com"
-        assert body["bib_key"] == BIB_KEY
+        assert body["bib_id"] == BIB_KEY
 
     def it_replaces_previous_decision_by_same_researcher(
         self, client: TestClient, alice_headers: dict[str, str]

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from snow.domain.identity import WorkRef
 
@@ -138,7 +138,10 @@ class Set(BaseModel):
 
 
 class Decision(BaseModel):
-    bib_key: str
+    bib_key: str = Field(
+        validation_alias=AliasChoices("bib_key", "bib_id"),
+        serialization_alias="bib_id",
+    )
     researcher_id: str
     verdict: Verdict
     criterion_id: str | None = None
@@ -150,7 +153,10 @@ class Decision(BaseModel):
 class Resolution(BaseModel):
     """Final call when researchers disagreed on a work."""
 
-    bib_key: str
+    bib_key: str = Field(
+        validation_alias=AliasChoices("bib_key", "bib_id"),
+        serialization_alias="bib_id",
+    )
     verdict: Verdict
     by: str
     note: str | None = None
