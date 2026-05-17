@@ -52,3 +52,21 @@ class DescribeWorkspaceWithoutProject:
         assert (root / "sets" / "00-start" / "set.yml").exists()
         sets = client.get("/api/sets").json()
         assert any(s["id"] == "00-start" for s in sets)
+
+    def it_creates_new_project_with_default_criteria(self, tmp_path: Path):
+        client = TestClient(create_app(None))
+        root = tmp_path / "new-proj"
+        r = client.post("/api/workspace/new", json={"path": str(root), "name": "My Review"})
+        assert r.status_code == 200
+
+        # Verify default criteria were created.
+        project = client.get("/api/project").json()
+        assert len(project["criteria"]) == 9
+        criterion_ids = {c["id"] for c in project["criteria"]}
+        assert criterion_ids == {"ic1", "ec1", "ec2", "ec3", "ec4", "ec5", "ec6", "ec7", "ec8"}
+
+        # Verify kinds are correct.
+        includes = [c for c in project["criteria"] if c["kind"] == "include"]
+        excludes = [c for c in project["criteria"] if c["kind"] == "exclude"]
+        assert len(includes) == 1
+        assert len(excludes) == 8

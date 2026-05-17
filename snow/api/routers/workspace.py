@@ -8,10 +8,22 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from snow.api.state import ApiState, get_state
-from snow.domain.models import Project, Researcher
+from snow.domain.models import Criterion, CriterionKind, Project, Researcher
 from snow.git_utils import git_user_email, git_user_name
 
 router = APIRouter(prefix="/api/workspace", tags=["workspace"])
+
+DEFAULT_CRITERIA = [
+    Criterion(id="ic1", kind=CriterionKind.INCLUDE, description="Related to the review topic"),
+    Criterion(id="ec1", kind=CriterionKind.EXCLUDE, description="Unrelated to the review topic"),
+    Criterion(id="ec2", kind=CriterionKind.EXCLUDE, description="Wrong domain or application context"),
+    Criterion(id="ec3", kind=CriterionKind.EXCLUDE, description="Not a primary study"),
+    Criterion(id="ec4", kind=CriterionKind.EXCLUDE, description="Grey literature"),
+    Criterion(id="ec5", kind=CriterionKind.EXCLUDE, description="Not written in English"),
+    Criterion(id="ec6", kind=CriterionKind.EXCLUDE, description="Duplicate or superseded version"),
+    Criterion(id="ec7", kind=CriterionKind.EXCLUDE, description="Full text unavailable"),
+    Criterion(id="ec8", kind=CriterionKind.EXCLUDE, description="Insufficient information for data extraction"),
+]
 
 
 class WorkspaceInfo(BaseModel):
@@ -54,7 +66,11 @@ def new_project(body: NewProjectInput, state: ApiState = Depends(get_state)) -> 
         raise HTTPException(400, f"A snow project already exists at {root}")
     from snow.storage.repo import ProjectRepo
     repo = ProjectRepo(root)
-    project = Project(name=body.name.strip() or root.name, description=body.description)
+    project = Project(
+        name=body.name.strip() or root.name,
+        description=body.description,
+        criteria=DEFAULT_CRITERIA,
+    )
     repo.init(project)
     state.switch(root)
     email = git_user_email()
