@@ -26,6 +26,15 @@ export interface CriterionInput extends Criterion {
   previous_id?: string | null;
 }
 
+export interface Phase {
+  id: string;
+  description: string;
+}
+
+export interface PhaseInput extends Phase {
+  previous_id?: string | null;
+}
+
 export interface ProviderConfig {
   name: string;
   enabled: boolean;
@@ -37,6 +46,7 @@ export interface Project {
   description?: string | null;
   researchers: Researcher[];
   criteria: Criterion[];
+  phases: Phase[];
   providers: ProviderConfig[];
 }
 
@@ -70,6 +80,7 @@ export interface Decision {
   researcher_id: string;
   verdict: Verdict;
   criterion_id?: string | null;
+  phase_id?: string | null;
   note?: string | null;
   decided_at: string;
 }
@@ -90,6 +101,7 @@ export interface DecisionsResponse {
 export interface DecisionInput {
   verdict: Verdict;
   criterion_id?: string | null;
+  phase_id?: string | null;
   note?: string | null;
 }
 

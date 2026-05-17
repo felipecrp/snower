@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from snow.api.state import ApiState, get_state
-from snow.domain.models import Criterion, CriterionKind, Project, Researcher
+from snow.domain.models import Criterion, CriterionKind, Phase, Project, Researcher
 from snow.git_utils import git_user_email, git_user_name
 
 router = APIRouter(prefix="/api/workspace", tags=["workspace"])
@@ -23,6 +23,13 @@ DEFAULT_CRITERIA = [
     Criterion(id="ec6", kind=CriterionKind.EXCLUDE, description="Duplicate or superseded version"),
     Criterion(id="ec7", kind=CriterionKind.EXCLUDE, description="Full text unavailable"),
     Criterion(id="ec8", kind=CriterionKind.EXCLUDE, description="Insufficient information for data extraction"),
+]
+
+DEFAULT_PHASES = [
+    Phase(id="ph1", description="Records"),
+    Phase(id="ph2", description="Title and abstract"),
+    Phase(id="ph3", description="Introduction and conclusion"),
+    Phase(id="ph4", description="Full text"),
 ]
 
 
@@ -70,6 +77,7 @@ def new_project(body: NewProjectInput, state: ApiState = Depends(get_state)) -> 
         name=body.name.strip() or root.name,
         description=body.description,
         criteria=DEFAULT_CRITERIA,
+        phases=DEFAULT_PHASES,
     )
     repo.init(project)
     state.switch(root)

@@ -162,6 +162,74 @@ class DescribeRemoveResearcher:
         assert len(resolutions) == 1
 
 
+class DescribeReplacePhases:
+    def it_replaces_the_list(self, client: TestClient):
+        new_list = [
+            {"id": "ph1", "description": "Records"},
+            {"id": "ph2", "description": "Full text"},
+        ]
+        r = client.put("/api/project/phases", json=new_list)
+        assert r.status_code == 200
+        body = client.get("/api/project").json()
+        assert [p["id"] for p in body["phases"]] == ["ph1", "ph2"]
+
+    def it_rejects_duplicate_ids(self, client: TestClient):
+        r = client.put(
+            "/api/project/phases",
+            json=[
+                {"id": "ph1", "description": "a"},
+                {"id": "ph1", "description": "b"},
+            ],
+        )
+        assert r.status_code == 400
+
+    def it_persists_empty_list(self, client: TestClient):
+        client.put("/api/project/phases", json=[{"id": "ph1", "description": "Records"}])
+        r = client.put("/api/project/phases", json=[])
+        assert r.status_code == 200
+        assert client.get("/api/project").json()["phases"] == []
+
+
+def _seed_decision_with_phase(
+    project_dir, researcher_id: str = "alice@example.com", phase_id: str | None = "ph1"
+):
+    repo = ProjectRepo(project_dir)
+    decisions = [
+        Decision(
+            bib_key="alpha2020systematic",
+            researcher_id=researcher_id,
+            verdict=Verdict.ACCEPT,
+            criterion_id="inc1",
+            phase_id=phase_id,
+            decided_at=datetime.now(timezone.utc),
+        )
+    ]
+    repo.save_decisions("00-start", decisions, [])
+
+
+class DescribeRenamePhase:
+    def it_propagates_id_change_to_decisions(self, client: TestClient, project_dir):
+        client.put(
+            "/api/project/phases",
+            json=[{"id": "ph1", "description": "Records"}],
+        )
+        _seed_decision_with_phase(project_dir, phase_id="ph1")
+        r = client.put(
+            "/api/project/phases",
+            json=[{"id": "screening", "description": "Records", "previous_id": "ph1"}],
+        )
+        assert r.status_code == 200
+        decisions = client.get("/api/sets/00-start/decisions").json()["decisions"]
+        assert [d["phase_id"] for d in decisions] == ["screening"]
+
+    def it_rejects_unknown_previous_id(self, client: TestClient):
+        r = client.put(
+            "/api/project/phases",
+            json=[{"id": "ph1", "description": "Records", "previous_id": "ghost"}],
+        )
+        assert r.status_code == 400
+
+
 class DescribeRenameCriterion:
     def it_propagates_id_change_to_decisions(self, client: TestClient, project_dir):
         _seed_decision(project_dir, researcher_id="alice@example.com", criterion_id="inc1")

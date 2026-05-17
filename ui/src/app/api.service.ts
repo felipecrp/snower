@@ -9,6 +9,8 @@ import {
   DecisionInput,
   DecisionsResponse,
   GitUser,
+  Phase,
+  PhaseInput,
   Project,
   ProjectInfoInput,
   Researcher,
@@ -35,6 +37,10 @@ export class ApiService {
 
   replaceCriteria(criteria: CriterionInput[]): Observable<Criterion[]> {
     return this.http.put<Criterion[]>('/api/project/criteria', criteria);
+  }
+
+  replacePhases(phases: PhaseInput[]): Observable<Phase[]> {
+    return this.http.put<Phase[]>('/api/project/phases', phases);
   }
 
   listSets(): Observable<ReviewSet[]> {

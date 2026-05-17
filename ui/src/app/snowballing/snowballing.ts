@@ -7,6 +7,7 @@ import {
   Criterion,
   Decision,
   DecisionInput,
+  Phase,
   ReviewSet,
   Work,
 } from '../models';
@@ -51,6 +52,7 @@ export class SnowballingComponent {
   readonly showSelected = signal(true);
   readonly showRejected = signal(false);
   readonly sortField = signal<SortField>('author');
+  readonly activePhase = signal<string | null>(null);
   readonly visibilityMode = signal<VisibilityMode>('selected');
   readonly selectedWorkId = signal<string | null>(null);
   readonly criterionDialog = signal<CriterionDialog | null>(null);
@@ -84,6 +86,7 @@ export class SnowballingComponent {
   readonly excludeCriteria = computed(
     () => this.project()?.criteria.filter((c) => c.kind === 'exclude') ?? [],
   );
+  readonly phases = computed(() => this.project()?.phases ?? []);
   readonly triageCounts = computed<TriageCounts>(() => {
     const set = this.currentSet();
     if (!set) return { selected: 0, rejected: 0, total: 0, shown: 0 };
@@ -135,6 +138,7 @@ export class SnowballingComponent {
   private static readonly SHOW_REJECTED_KEY = 'snow:show-rejected';
   private static readonly RESULTS_MODE_KEY = 'snow:results-mode';
   private static readonly SORT_FIELD_KEY = 'snow:sort-field';
+  private static readonly ACTIVE_PHASE_KEY = 'snow:active-phase';
   private setAutoSelected = false;
 
   constructor() {
@@ -159,6 +163,22 @@ export class SnowballingComponent {
       localStorage.setItem(SnowballingComponent.SHOW_REJECTED_KEY, String(this.showRejected()));
       localStorage.setItem(SnowballingComponent.RESULTS_MODE_KEY, String(this.resultsMode()));
       localStorage.setItem(SnowballingComponent.SORT_FIELD_KEY, this.sortField());
+      const ap = this.activePhase();
+      if (ap !== null) {
+        localStorage.setItem(SnowballingComponent.ACTIVE_PHASE_KEY, ap);
+      } else {
+        localStorage.removeItem(SnowballingComponent.ACTIVE_PHASE_KEY);
+      }
+    });
+
+    // Auto-select first phase when phases load and none is selected or stored one is gone
+    effect(() => {
+      const phases = this.phases();
+      if (!phases.length) return;
+      const current = untracked(() => this.activePhase());
+      if (!current || !phases.some((p) => p.id === current)) {
+        this.activePhase.set(phases[0].id);
+      }
     });
 
     // When filters/sort change, keep selected paper visible; if filtered out, pick next.
@@ -194,6 +214,9 @@ export class SnowballingComponent {
     if (sortField && SORT_FIELDS.includes(sortField as SortField)) {
       this.sortField.set(sortField as SortField);
     }
+
+    const activePhase = localStorage.getItem(SnowballingComponent.ACTIVE_PHASE_KEY);
+    if (activePhase) this.activePhase.set(activePhase);
   }
 
   selectSet(s: ReviewSet): void {
@@ -377,6 +400,7 @@ export class SnowballingComponent {
     const body: DecisionInput = {
       verdict: criterion.kind === 'include' ? 'accept' : 'reject',
       criterion_id: criterion.id,
+      phase_id: this.activePhase(),
       note: this.noteFor(work.id) || null,
     };
     this.rememberCriterion(body.verdict, criterion.id);
@@ -676,11 +700,31 @@ export class SnowballingComponent {
     const body: DecisionInput = {
       verdict: dialog.verdict,
       criterion_id: criterion.id,
+      phase_id: this.activePhase(),
       note: this.criterionNote() || null,
     };
     this.rememberCriterion(dialog.verdict, criterion.id);
     this.putDecision(set.id, dialog.workId, body, me, this.fallbackSelectionAfter(dialog.workId));
     this.closeCriterionDialog();
+  }
+
+  onPhaseAssign(work: Work, phaseId: string | null): void {
+    const me = this.activeResearcherId();
+    if (!me) {
+      this.error.set('Select an active researcher first.');
+      return;
+    }
+    const set = this.currentSet();
+    if (!set) return;
+    const existing = this.decisionFor(work.id);
+    if (!existing) return;
+    const body: DecisionInput = {
+      verdict: existing.verdict,
+      criterion_id: existing.criterion_id ?? null,
+      phase_id: phaseId,
+      note: this.noteFor(work.id) || null,
+    };
+    this.putDecision(set.id, work.id, body, me);
   }
 
   saveNote(work: Work): void {
@@ -698,6 +742,7 @@ export class SnowballingComponent {
     const body: DecisionInput = {
       verdict: existing.verdict,
       criterion_id: existing.criterion_id ?? null,
+      phase_id: existing.phase_id ?? null,
       note: note || null,
     };
     this.putDecision(set.id, work.id, body, me);

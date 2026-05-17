@@ -79,6 +79,12 @@
 
     <ng-container *ngIf="currentSet() as cs">
       <div class="filters">
+        <label class="phase-control" for="active-phase" *ngIf="phases().length">
+          phase
+          <select id="active-phase" [ngModel]="activePhase()" (ngModelChange)="activePhase.set($event)">
+            <option *ngFor="let p of phases()" [value]="p.id">{{ p.id }}: {{ p.description }}</option>
+          </select>
+        </label>
         <label class="sort-control" for="sort-field">
           sort by
           <select id="sort-field" [ngModel]="sortField()" (ngModelChange)="sortField.set($event)">

@@ -7,6 +7,8 @@ import {
   Criterion,
   CriterionInput,
   CriterionKind,
+  Phase,
+  PhaseInput,
   Researcher,
   ResearcherInput,
   WorkspaceInfo,
@@ -19,6 +21,10 @@ interface ResearcherRow extends Researcher {
 }
 
 interface CriterionRow extends Criterion {
+  originalId: string;
+}
+
+interface PhaseRow extends Phase {
   originalId: string;
 }
 
@@ -41,6 +47,7 @@ export class ProjectComponent {
   readonly projectDescription = signal('');
   readonly researchers = signal<ResearcherRow[]>([]);
   readonly criteria = signal<CriterionRow[]>([]);
+  readonly phases = signal<PhaseRow[]>([]);
   readonly error = signal<string | null>(null);
   readonly saved = signal<string | null>(null);
 
@@ -80,6 +87,7 @@ export class ProjectComponent {
         this.projectDescription.set(p.description ?? '');
         this.researchers.set(p.researchers.map((r) => ({ ...r, originalEmail: r.email })));
         this.criteria.set(p.criteria.map((c) => ({ ...c, originalId: c.id })));
+        this.phases.set(p.phases.map((ph) => ({ ...ph, originalId: ph.id })));
       },
       error: (e) => {
         if (e.status !== 409) this.error.set(`Failed to load project: ${e.message}`);
@@ -223,6 +231,43 @@ export class ProjectComponent {
         this.saved.set('Criteria saved.');
       },
       error: (e) => this.error.set(`Failed to save criteria: ${this.errorMessage(e)}`),
+    });
+  }
+
+  addPhase(): void {
+    this.phases.update((list) => [
+      ...list,
+      { id: '', description: '', originalId: '' },
+    ]);
+  }
+
+  removePhase(idx: number): void {
+    this.phases.update((list) => list.filter((_, i) => i !== idx));
+  }
+
+  savePhases(): void {
+    this.error.set(null);
+    this.saved.set(null);
+    const rows = this.phases().map((p) => ({
+      id: this.normalizeId(p.id),
+      description: p.description.trim(),
+      originalId: p.originalId,
+    }));
+    if (rows.some((p) => !p.id || !p.description)) {
+      this.error.set('Each phase needs an id (letters/digits only) and a description.');
+      return;
+    }
+    const payload: PhaseInput[] = rows.map((p) => ({
+      id: p.id,
+      description: p.description,
+      ...(p.originalId && p.originalId !== p.id ? { previous_id: p.originalId } : {}),
+    }));
+    this.api.replacePhases(payload).subscribe({
+      next: (saved) => {
+        this.phases.set(saved.map((p) => ({ ...p, originalId: p.id })));
+        this.saved.set('Phases saved.');
+      },
+      error: (e) => this.error.set(`Failed to save phases: ${this.errorMessage(e)}`),
     });
   }
 

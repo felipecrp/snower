@@ -41,6 +41,7 @@ from snow.domain.models import (
     BibliographicWork,
     Criterion,
     Decision,
+    Phase,
     Project,
     Relation,
     Researcher,
@@ -918,12 +919,14 @@ class ProjectRepo:
         set_id: str,
         new_works: list[Work],
         criteria: list[Criterion] | None = None,
+        phases: list[Phase] | None = None,
         researcher_id: str | None = None,
     ) -> Set:
         """Add works from a BibTeX import to an existing set, deduplicating.
 
-        If criteria and researcher_id are provided, creates decisions for works
-        whose `groups` field matches a criterion ID.
+        If criteria/phases and researcher_id are provided, creates or updates
+        decisions for works whose `groups` field matches a criterion or phase ID.
+        Criteria matching sets the verdict; phase matching annotates the decision.
         """
         try:
             existing = self.load_set(set_id)
@@ -977,30 +980,63 @@ class ProjectRepo:
                 existing_by_bib_key[w.bib_key] = new_index
         self.save_set(existing)
 
-        if criteria and researcher_id:
-            criterion_by_id = {c.id: c for c in criteria}
+        if researcher_id and (criteria or phases):
             now = datetime.now(timezone.utc)
             # Reload to get finalized bib_keys after _renormalize_keys ran in save_set.
             final_set = self.load_set(set_id)
             final_by_full = {full_fingerprint(_work_ref(w)): w.bib_key for w in final_set.works}
-            for w in new_works:
-                groups_raw = w.extra.get("groups", "")
-                groups = [g.strip() for g in groups_raw.split(",") if g.strip()]
-                for group in groups:
-                    if group in criterion_by_id:
-                        c = criterion_by_id[group]
-                        verdict = Verdict.ACCEPT if c.kind == "include" else Verdict.REJECT
-                        final_bib_key = final_by_full.get(full_fingerprint(_work_ref(w)), w.bib_key)
-                        decision = Decision(
-                            bib_key=final_bib_key,
-                            researcher_id=researcher_id,
-                            verdict=verdict,
-                            criterion_id=c.id,
-                            note=None,
-                            decided_at=now,
-                        )
-                        self.save_researcher_decision(set_id, decision)
-                        break
+
+            if criteria:
+                criterion_by_id = {c.id: c for c in criteria}
+                for w in new_works:
+                    groups_raw = w.extra.get("groups", "")
+                    groups = [g.strip() for g in groups_raw.split(",") if g.strip()]
+                    for group in groups:
+                        if group in criterion_by_id:
+                            c = criterion_by_id[group]
+                            verdict = Verdict.ACCEPT if c.kind == "include" else Verdict.REJECT
+                            final_bib_key = final_by_full.get(full_fingerprint(_work_ref(w)), w.bib_key)
+                            # Preserve existing phase_id if any decision already exists
+                            existing_decisions, _ = self.load_decisions(set_id)
+                            existing_phase_id = next(
+                                (d.phase_id for d in existing_decisions
+                                 if d.bib_key == final_bib_key and d.researcher_id == researcher_id),
+                                None,
+                            )
+                            decision = Decision(
+                                bib_key=final_bib_key,
+                                researcher_id=researcher_id,
+                                verdict=verdict,
+                                criterion_id=c.id,
+                                phase_id=existing_phase_id,
+                                note=None,
+                                decided_at=now,
+                            )
+                            self.save_researcher_decision(set_id, decision)
+                            break
+
+            if phases:
+                phase_by_id = {p.id: p for p in phases}
+                # Re-read decisions after the criteria loop may have written some
+                current_decisions, _ = self.load_decisions(set_id)
+                decisions_by_bib_key = {
+                    d.bib_key: d for d in current_decisions if d.researcher_id == researcher_id
+                }
+                for w in new_works:
+                    groups_raw = w.extra.get("groups", "")
+                    groups = [g.strip() for g in groups_raw.split(",") if g.strip()]
+                    matched_phase_id: str | None = None
+                    for group in groups:
+                        if group in phase_by_id:
+                            matched_phase_id = phase_by_id[group].id
+                            break
+                    if not matched_phase_id:
+                        continue
+                    final_bib_key = final_by_full.get(full_fingerprint(_work_ref(w)), w.bib_key)
+                    existing = decisions_by_bib_key.get(final_bib_key)
+                    if existing:
+                        updated = existing.model_copy(update={"phase_id": matched_phase_id})
+                        self.save_researcher_decision(set_id, updated)
 
         return self.load_set(set_id)
 

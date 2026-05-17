@@ -9,6 +9,7 @@ from snow.api.state import get_repo
 from snow.domain.models import (
     Criterion,
     CriterionKind,
+    Phase,
     Project,
     Researcher,
 )
@@ -26,6 +27,12 @@ class ResearcherInput(BaseModel):
 class CriterionInput(BaseModel):
     id: str
     kind: CriterionKind
+    description: str
+    previous_id: str | None = None
+
+
+class PhaseInput(BaseModel):
+    id: str
     description: str
     previous_id: str | None = None
 
@@ -105,6 +112,27 @@ def replace_criteria(
     return project.criteria
 
 
+@router.put("/phases", response_model=list[Phase])
+def replace_phases(
+    items: list[PhaseInput],
+    repo: ProjectRepo = Depends(get_repo),
+) -> list[Phase]:
+    new_ids = [p.id for p in items]
+    if len(set(new_ids)) != len(new_ids):
+        raise HTTPException(400, "Phase ids must be unique")
+
+    project = repo.load_project()
+    existing_ids = {p.id for p in project.phases}
+    renames = _collect_renames(items, existing_ids)
+
+    project.phases = [Phase(id=p.id, description=p.description) for p in items]
+    repo.save_project(project)
+
+    if renames:
+        _rewrite_phase_refs(repo, renames)
+    return project.phases
+
+
 def _collect_renames(
     items: list[ResearcherInput] | list[CriterionInput],
     existing_ids: set[str],
@@ -158,6 +186,18 @@ def _rewrite_criterion_refs(repo: ProjectRepo, renames: dict[str, str]) -> None:
         for d in decisions:
             if d.criterion_id in renames:
                 d.criterion_id = renames[d.criterion_id]
+                changed = True
+        if changed:
+            repo.save_decisions(set_id, decisions, resolutions)
+
+
+def _rewrite_phase_refs(repo: ProjectRepo, renames: dict[str, str]) -> None:
+    for set_id in repo.list_set_ids():
+        decisions, resolutions = repo.load_decisions(set_id)
+        changed = False
+        for d in decisions:
+            if d.phase_id in renames:
+                d.phase_id = renames[d.phase_id]
                 changed = True
         if changed:
             repo.save_decisions(set_id, decisions, resolutions)

@@ -74,6 +74,18 @@ class DescribeUpsertDecision:
         )
         assert r.status_code == 404
 
+    def it_persists_and_returns_phase_id(self, client: TestClient, alice_headers: dict[str, str]):
+        r = client.put(
+            f"/api/sets/00-start/decisions/{BIB_KEY}",
+            json={"verdict": "accept", "criterion_id": "inc1", "phase_id": "ph2"},
+            headers=alice_headers,
+        )
+        assert r.status_code == 200
+        assert r.json()["phase_id"] == "ph2"
+        decisions = client.get("/api/sets/00-start/decisions").json()["decisions"]
+        alice = next(d for d in decisions if d["researcher_id"] == "alice@example.com")
+        assert alice["phase_id"] == "ph2"
+
 
 class DescribeDeleteDecision:
     def it_removes_only_the_active_researchers_decision(

@@ -63,6 +63,19 @@ class Criterion(BaseModel):
         return normalized
 
 
+class Phase(BaseModel):
+    id: str
+    description: str
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def normalize_id(cls, v: str) -> str:
+        normalized = v.lower().strip()
+        if not _ID_RE.match(normalized):
+            raise ValueError(f"Phase id must contain only letters, digits, or underscores (got {v!r})")
+        return normalized
+
+
 class ProviderConfig(BaseModel):
     name: str
     enabled: bool = True
@@ -74,6 +87,7 @@ class Project(BaseModel):
     description: str | None = None
     researchers: list[Researcher] = Field(default_factory=list)
     criteria: list[Criterion] = Field(default_factory=list)
+    phases: list[Phase] = Field(default_factory=list)
     providers: list[ProviderConfig] = Field(default_factory=list)
 
 
@@ -128,6 +142,7 @@ class Decision(BaseModel):
     researcher_id: str
     verdict: Verdict
     criterion_id: str | None = None
+    phase_id: str | None = None
     note: str | None = None
     decided_at: datetime
 

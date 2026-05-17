@@ -8,6 +8,7 @@ from snow.domain.models import (
     Criterion,
     CriterionKind,
     Decision,
+    Phase,
     Project,
     Relation,
     Researcher,
@@ -153,6 +154,71 @@ class DescribeProjectRepoSets:
         repo.init(project)
         with pytest.raises(ValueError):
             repo.load_set("nonsense")
+
+
+class DescribeImportBibWithPhases:
+    def _make_repo(self, tmp_path: Path, phases: list[Phase] | None = None) -> ProjectRepo:
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(
+            Project(
+                name="test",
+                criteria=[Criterion(id="ic1", kind=CriterionKind.INCLUDE, description="empirical")],
+                phases=phases or [Phase(id="ph1", description="Records")],
+            )
+        )
+        repo.import_start_set([])
+        return repo
+
+    def it_assigns_phase_id_when_group_matches(self, tmp_path: Path):
+        repo = self._make_repo(tmp_path)
+        phases = [Phase(id="ph1", description="Records")]
+        criteria = [Criterion(id="ic1", kind=CriterionKind.INCLUDE, description="empirical")]
+        work = Work(
+            bib_key="",
+            title="Test",
+            authors=["A, A"],
+            year=2020,
+            extra={"groups": "ic1, ph1"},
+        )
+        repo.import_bib_to_set("00-start", [work], criteria=criteria, phases=phases, researcher_id="alice@example.com")
+        decisions, _ = repo.load_decisions("00-start")
+        assert len(decisions) == 1
+        assert decisions[0].criterion_id == "ic1"
+        assert decisions[0].phase_id == "ph1"
+
+    def it_does_not_create_decision_when_only_phase_matches(self, tmp_path: Path):
+        repo = self._make_repo(tmp_path)
+        phases = [Phase(id="ph1", description="Records")]
+        work = Work(
+            bib_key="",
+            title="Test",
+            authors=["A, A"],
+            year=2020,
+            extra={"groups": "ph1"},
+        )
+        repo.import_bib_to_set("00-start", [work], phases=phases, researcher_id="alice@example.com")
+        decisions, _ = repo.load_decisions("00-start")
+        assert decisions == []
+
+    def it_preserves_phase_id_when_criterion_overwrites_decision(self, tmp_path: Path):
+        repo = self._make_repo(tmp_path)
+        phases = [Phase(id="ph2", description="Full text")]
+        criteria = [Criterion(id="ic1", kind=CriterionKind.INCLUDE, description="empirical")]
+        # First import assigns phase ph2 alongside criterion ic1
+        work = Work(
+            bib_key="",
+            title="Test",
+            authors=["A, A"],
+            year=2020,
+            extra={"groups": "ic1, ph2"},
+        )
+        repo.import_bib_to_set("00-start", [work], criteria=criteria, phases=phases, researcher_id="alice@example.com")
+        decisions, _ = repo.load_decisions("00-start")
+        assert decisions[0].phase_id == "ph2"
+        # Re-import with only criterion — phase_id must be preserved
+        repo.import_bib_to_set("00-start", [work], criteria=criteria, researcher_id="alice@example.com")
+        decisions, _ = repo.load_decisions("00-start")
+        assert decisions[0].phase_id == "ph2"
 
 
 class DescribeProjectRepoDecisions:

@@ -22,6 +22,7 @@ class DecisionsResponse(BaseModel):
 class DecisionInput(BaseModel):
     verdict: Verdict
     criterion_id: str | None = None
+    phase_id: str | None = None
     note: str | None = None
 
 
@@ -51,6 +52,7 @@ def upsert_decision(
         researcher_id=researcher.email,
         verdict=body.verdict,
         criterion_id=body.criterion_id,
+        phase_id=body.phase_id,
         note=body.note,
         decided_at=datetime.now(timezone.utc),
     )
