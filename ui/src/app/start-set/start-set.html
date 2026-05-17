@@ -17,6 +17,24 @@
 
   <div class="error" *ngIf="error() as err">{{ err }}</div>
 
+  <div class="import-progress" *ngIf="pendingWorks().length">
+    <table>
+      <tbody>
+        <tr *ngFor="let item of pendingWorks(); trackBy: trackByIndex" [class]="item.status">
+          <td class="progress-status">
+            <span *ngIf="item.status === 'pending'">·</span>
+            <span *ngIf="item.status === 'importing'">⟳</span>
+            <span *ngIf="item.status === 'done'">✓</span>
+            <span *ngIf="item.status === 'error'">✗</span>
+          </td>
+          <td class="bib-key">{{ item.work.bib_key }}</td>
+          <td class="title">{{ item.work.title }}</td>
+          <td class="progress-error" *ngIf="item.error">{{ item.error }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
   <div class="stats" *ngIf="startSet() as s">
     <span class="stat"><strong>{{ works().length }}</strong> papers</span>
   </div>

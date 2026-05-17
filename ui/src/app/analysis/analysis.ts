@@ -17,6 +17,7 @@ type SortField = 'author' | 'title' | 'venue' | 'criterion';
 type CriterionDialog = { verdict: 'accept' | 'reject'; workId: string };
 type VisibilityMode = 'pending' | 'selected' | 'rejected' | 'all' | 'custom';
 type TriageCounts = { selected: number; rejected: number; total: number; shown: number };
+type PendingWork = { work: Work; status: 'pending' | 'importing' | 'done' | 'error'; error?: string };
 
 const SORT_FIELDS: SortField[] = ['author', 'title', 'venue', 'criterion'];
 
@@ -40,6 +41,7 @@ export class AnalysisComponent {
   readonly activeResearcherId = this.researcherSvc.activeId;
   readonly error = signal<string | null>(null);
   readonly importing = signal(false);
+  readonly pendingWorks = signal<PendingWork[]>([]);
   readonly snowballRunning = signal(false);
   readonly snowballMenuOpen = signal(false);
   readonly inFlightSnowball = signal<ReadonlySet<string>>(new Set());
@@ -457,19 +459,81 @@ export class AnalysisComponent {
     if (!file) return;
     this.importing.set(true);
     this.error.set(null);
-    this.api.importBib('00-start', file).subscribe({
-      next: (updatedSet) => {
-        this.projectSvc.sets.update((all) =>
-          all.map((s) => (s.id === '00-start' ? updatedSet : s)),
-        );
-        this.importing.set(false);
-        input.value = '';
-        this.selectSet(updatedSet);
+    this.pendingWorks.set([]);
+    input.value = '';
+
+    this.projectSvc.markSetsPending(['00-start']);
+    const startSet = this.projectSvc.sets().find((s) => s.id === '00-start');
+    if (startSet && this.currentSet()?.id !== '00-start') {
+      this.selectSet(startSet);
+    }
+    this.api.parseBib('00-start', file).subscribe({
+      next: (works) => {
+        this.pendingWorks.set(works.map((w) => ({ work: w, status: 'pending' })));
+        this.importNextWork(0);
       },
       error: (e) => {
-        this.error.set(`Import failed: ${e.error?.detail ?? e.message}`);
+        this.error.set(`Parse failed: ${e.error?.detail ?? e.message}`);
         this.importing.set(false);
-        input.value = '';
+        this.projectSvc.clearSetsPending(['00-start']);
+      },
+    });
+  }
+
+  private importNextWork(index: number): void {
+    const pending = this.pendingWorks();
+    if (index >= pending.length) {
+      this.api.getSet('00-start').subscribe({
+        next: (updatedSet) => {
+          this.projectSvc.sets.update((all) =>
+            all.map((s) => (s.id === '00-start' ? updatedSet : s)),
+          );
+          this.importing.set(false);
+          this.projectSvc.clearSetsPending(['00-start']);
+          this.pendingWorks.set([]);
+          this.selectSet(updatedSet);
+        },
+        error: () => {
+          this.importing.set(false);
+          this.projectSvc.clearSetsPending(['00-start']);
+          this.pendingWorks.set([]);
+        },
+      });
+      return;
+    }
+
+    this.pendingWorks.update((all) =>
+      all.map((item, i) => (i === index ? { ...item, status: 'importing' } : item)),
+    );
+
+    this.api.importWork('00-start', pending[index].work).subscribe({
+      next: (importedWork) => {
+        const mergeWork = (works: Work[]): Work[] => {
+          const idx = works.findIndex((w) => w.id === importedWork.id);
+          return idx >= 0
+            ? works.map((w, i) => (i === idx ? importedWork : w))
+            : [...works, importedWork];
+        };
+        this.projectSvc.sets.update((all) =>
+          all.map((s) => (s.id === '00-start' ? { ...s, works: mergeWork(s.works) } : s)),
+        );
+        this.currentSet.update((cs) =>
+          cs && cs.id === '00-start' ? { ...cs, works: mergeWork(cs.works) } : cs,
+        );
+        this.pendingWorks.update((all) =>
+          all.map((item, i) => (i === index ? { ...item, status: 'done' } : item)),
+        );
+        this.importNextWork(index + 1);
+      },
+      error: (e) => {
+        this.pendingWorks.update((all) =>
+          all.map((item, i) =>
+            i === index
+              ? { ...item, status: 'error', error: e.error?.detail ?? e.message }
+              : item,
+          ),
+        );
+        this.importNextWork(index + 1);
       },
     });
   }

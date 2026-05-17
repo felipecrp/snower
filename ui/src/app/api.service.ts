@@ -14,6 +14,7 @@ import {
   ResearcherInput,
   ReviewSet,
   SetKind,
+  Work,
   WorkspaceInfo,
 } from './models';
 import { ResearcherService } from './researcher.service';
@@ -60,6 +61,18 @@ export class ApiService {
     const form = new FormData();
     form.append('file', file);
     return this.http.post<ReviewSet>(`/api/sets/${setId}/import`, form, {
+      headers: this.researcherHeaders(),
+    });
+  }
+
+  parseBib(setId: string, file: File): Observable<Work[]> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<Work[]>(`/api/sets/${setId}/parse-bib`, form);
+  }
+
+  importWork(setId: string, work: Work): Observable<Work> {
+    return this.http.post<Work>(`/api/sets/${setId}/import-work`, work, {
       headers: this.researcherHeaders(),
     });
   }

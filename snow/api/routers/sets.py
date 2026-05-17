@@ -8,7 +8,7 @@ import tempfile
 from fastapi import APIRouter, Depends, Header, HTTPException, UploadFile
 
 from snow.api.state import get_repo
-from snow.domain.models import Set
+from snow.domain.models import Set, Work
 from snow.providers.factory import get_enrichment_provider
 from snow.storage import bib
 from snow.storage.repo import ProjectRepo
@@ -60,3 +60,43 @@ async def import_bib(
         return repo.import_bib_to_set(set_id, works, criteria=criteria, researcher_id=x_researcher_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@router.post("/{set_id}/parse-bib", response_model=list[Work])
+async def parse_bib(
+    set_id: str,
+    file: UploadFile,
+    repo: ProjectRepo = Depends(get_repo),
+) -> list[Work]:
+    """Parse a .bib upload and return individual Work entries without importing."""
+    if set_id not in repo.list_set_ids():
+        raise HTTPException(404, f"Set not found: {set_id}")
+    content = await file.read()
+    with tempfile.NamedTemporaryFile(suffix=".bib", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = pathlib.Path(tmp.name)
+    try:
+        return bib.load(tmp_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+@router.post("/{set_id}/import-work", response_model=Work)
+async def import_work(
+    set_id: str,
+    work: Work,
+    repo: ProjectRepo = Depends(get_repo),
+    x_researcher_id: str | None = Header(default=None),
+) -> Work:
+    """Import a single Work into a set, running merge + enrichment pipeline."""
+    if set_id not in repo.list_set_ids():
+        raise HTTPException(404, f"Set not found: {set_id}")
+    works = repo.merge_with_library([work])
+    works = get_enrichment_provider(repo.load_project()).enrich_works(works)
+    criteria = repo.load_project().criteria if x_researcher_id else None
+    try:
+        updated_set = repo.import_bib_to_set(set_id, works, criteria=criteria, researcher_id=x_researcher_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    saved = next((w for w in updated_set.works if w.id == works[0].id), works[0])
+    return saved
