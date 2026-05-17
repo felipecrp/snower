@@ -24,13 +24,13 @@ interface CriterionRow extends Criterion {
 type Dialog = 'new' | 'open' | null;
 
 @Component({
-  selector: 'app-settings',
+  selector: 'app-project',
   standalone: true,
   imports: [CommonModule, FormsModule],
-  templateUrl: './settings.html',
-  styleUrl: './settings.scss',
+  templateUrl: './project.html',
+  styleUrl: './project.scss',
 })
-export class SettingsComponent {
+export class ProjectComponent {
   private readonly api = inject(ApiService);
   private readonly projectSvc = inject(ProjectService);
 

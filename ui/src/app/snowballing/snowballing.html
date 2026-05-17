@@ -1,98 +1,297 @@
-<div class="page">
-  <div class="page-header">
-    <h2>Snowballing</h2>
-    <div class="progress-summary" *ngIf="stats().total > 0">
-      <span class="progress-item">
-        Backward: <strong>{{ stats().backwardDone }}/{{ stats().total }}</strong>
-        <span class="pct">({{ backwardPct() }}%)</span>
-        <span class="progress-bar"><span class="fill" [style.width.%]="backwardPct()"></span></span>
-      </span>
-      <span class="progress-item">
-        Forward: <strong>{{ stats().forwardDone }}/{{ stats().total }}</strong>
-        <span class="pct">({{ forwardPct() }}%)</span>
-        <span class="progress-bar"><span class="fill" [style.width.%]="forwardPct()"></span></span>
-      </span>
+<div class="layout">
+  <aside class="sets">
+    <h3>Sets</h3>
+    <ul>
+      <li
+        *ngFor="let s of regularSets(); trackBy: trackById"
+        [class.active]="currentSet()?.id === s.id"
+        [class.pending]="projectSvc.pendingSetIds().has(s.id)"
+        (click)="selectSet(s)"
+      >
+        <span class="set-id">{{ s.id }}</span>
+        <span class="set-kind">{{ s.kind }}</span>
+        <span class="set-count">
+          <span *ngIf="projectSvc.pendingSetIds().has(s.id)" class="spinner" aria-hidden="true"></span>
+          {{ consensusCountFor(s).accepted }}/{{ s.works.length }}
+        </span>
+      </li>
+    </ul>
+    <div class="orphan-section" *ngIf="orphanSet() as os">
+      <div class="orphan-label">Orphans</div>
+      <li
+        [class.active]="currentSet()?.id === os.id"
+        [class.pending]="projectSvc.pendingSetIds().has(os.id)"
+        (click)="selectSet(os)"
+      >
+        <span class="set-id">orphan</span>
+        <span class="set-count">
+          <span *ngIf="projectSvc.pendingSetIds().has(os.id)" class="spinner" aria-hidden="true"></span>
+          {{ os.works.length }}
+        </span>
+      </li>
     </div>
-  </div>
-
-  <div class="action-bar" *ngIf="acceptedWorks().length">
-    <div class="select-actions">
-      <button (click)="selectUnsnowballed('backward')" [disabled]="running()">Select unsnowballed (backward)</button>
-      <button (click)="selectUnsnowballed('forward')" [disabled]="running()">Select unsnowballed (forward)</button>
-      <button *ngIf="selectedCount() > 0" (click)="clearSelection()" [disabled]="running()">Clear ({{ selectedCount() }})</button>
-    </div>
-    <div class="run-actions" *ngIf="selectedCount() > 0">
-      <button class="primary" (click)="runSnowballing('backward')" [disabled]="running()">
-        ← Run Backward ({{ selectedCount() }})
+    <div class="sets-footer">
+      <input
+        id="bib-import-input"
+        type="file"
+        accept=".bib"
+        style="display:none"
+        (change)="onBibFileSelected($event)"
+      />
+      <button class="import-btn" (click)="triggerBibImport()" [disabled]="importing()">
+        {{ importing() ? 'Importing…' : 'Import start set' }}
       </button>
-      <button class="primary" (click)="runSnowballing('forward')" [disabled]="running()">
-        Run Forward ({{ selectedCount() }}) →
-      </button>
+      <div class="snowball-split">
+        <div class="snowball-split-main">
+          <button
+            class="snowball-btn primary"
+            [disabled]="snowballRunning()"
+            (click)="runSnowballing('both-remaining')"
+          >{{ snowballRunning() ? 'Running…' : 'Snowball' }}</button>
+          <button
+            class="snowball-btn primary snowball-arrow"
+            [disabled]="snowballRunning()"
+            (click)="snowballMenuOpen.update(v => !v)"
+          >▾</button>
+        </div>
+        <ng-container *ngIf="snowballMenuOpen()">
+          <div class="snowball-backdrop" (click)="snowballMenuOpen.set(false)"></div>
+          <div class="snowball-menu">
+            <button
+              (click)="runSnowballing('backward-selected')"
+              [disabled]="!selectedAccepted()"
+              [title]="selectedAccepted() ? '' : 'Only consensus-accepted papers can be snowballed'"
+            >Backward selected</button>
+            <button
+              (click)="runSnowballing('forward-selected')"
+              [disabled]="!selectedAccepted()"
+              [title]="selectedAccepted() ? '' : 'Only consensus-accepted papers can be snowballed'"
+            >Forward selected</button>
+            <button (click)="runSnowballing('backward-remaining')">Backward remaining</button>
+            <button (click)="runSnowballing('forward-remaining')">Forward remaining</button>
+          </div>
+        </ng-container>
+      </div>
     </div>
-  </div>
+  </aside>
 
-  <div class="run-progress" *ngIf="progress() as p">
-    <div class="progress-track">
-      <div class="progress-fill" [style.width.%]="(p.done / p.total) * 100"></div>
-    </div>
-    <span>{{ p.kind }} snowballing: {{ p.done }}/{{ p.total }}
-      <span *ngIf="p.currentKey"> — processing {{ p.currentKey }}</span>
-    </span>
-  </div>
+  <div class="works-pane">
+    <div class="error" *ngIf="error() as err">{{ err }}</div>
 
-  <div class="error" *ngIf="error() as err">{{ err }}</div>
-
-  <div class="works-list" *ngIf="acceptedWorks().length; else empty">
-    <table>
-      <thead>
-        <tr>
-          <th class="col-check"></th>
-          <th>Paper</th>
-          <th>Set</th>
-          <th class="col-status">Backward</th>
-          <th class="col-status">Forward</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          *ngFor="let item of acceptedWorks(); trackBy: trackByKey"
-          [class.selected-row]="isSelected(item.work.bib_key)"
-          (click)="toggleSelect(item.work.bib_key)"
-        >
-          <td class="col-check">
+    <ng-container *ngIf="currentSet() as cs">
+      <div class="filters">
+        <label class="sort-control" for="sort-field">
+          sort by
+          <select id="sort-field" [ngModel]="sortField()" (ngModelChange)="sortField.set($event)">
+            <option value="author">author</option>
+            <option value="title">title</option>
+            <option value="venue">journal/conference</option>
+            <option value="criterion">criterion</option>
+          </select>
+        </label>
+        <div class="visibility-filters" aria-label="Visibility filters">
+          <span>show</span>
+          <label>
             <input
               type="checkbox"
-              [checked]="isSelected(item.work.bib_key)"
-              (click)="$event.stopPropagation()"
-              (change)="toggleSelect(item.work.bib_key)"
+              [checked]="showSelected()"
+              (change)="showSelected.set($any($event.target).checked); visibilityMode.set('custom')"
             />
-          </td>
-          <td class="title-cell">
-            <span class="title">{{ item.work.title }}</span>
-            <span class="meta">{{ item.work.authors[0] }}<span *ngIf="item.work.year"> · {{ item.work.year }}</span></span>
-          </td>
-          <td class="col-set"><span class="set-badge">{{ item.set.id }}</span></td>
-          <td class="col-status">
-            <span *ngIf="item.backwardDone" class="status done" [title]="item.work.last_backward_snowballed_at">
-              ✓ {{ item.work.last_backward_found ?? '?' }} found
-            </span>
-            <span *ngIf="!item.backwardDone" class="status pending">—</span>
-          </td>
-          <td class="col-status">
-            <span *ngIf="item.forwardDone" class="status done" [title]="item.work.last_forward_snowballed_at">
-              ✓ {{ item.work.last_forward_found ?? '?' }} found
-            </span>
-            <span *ngIf="!item.forwardDone" class="status pending">—</span>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+            accepted
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              [checked]="showRejected()"
+              (change)="showRejected.set($any($event.target).checked); visibilityMode.set('custom')"
+            />
+            rejected
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              [checked]="showPending()"
+              (change)="showPending.set($any($event.target).checked); visibilityMode.set('custom')"
+            />
+            undecided
+          </label>
+          <label class="consensus-toggle">
+            <input type="checkbox" [checked]="resultsMode()" (change)="resultsMode.set($any($event.target).checked)" />
+            final result
+          </label>
+        </div>
+        <span class="counts" *ngIf="triageCounts() as counts">
+          <strong>{{ counts.selected }}</strong> selected
+          <strong>{{ counts.rejected }}</strong> rejected
+          <strong>{{ counts.total }}</strong> total
+          <span>{{ counts.shown }} shown</span>
+        </span>
+      </div>
 
-  <ng-template #empty>
-    <div class="empty">
-      <p *ngIf="projectSvc.sets().length === 0">No sets yet. Import a start set and triage papers first.</p>
-      <p *ngIf="projectSvc.sets().length > 0">No consensus-accepted papers yet. Complete the triage in the Analysis tab first.</p>
-    </div>
-  </ng-template>
+      <div class="works">
+        <article
+          *ngFor="let w of filteredWorks(); trackBy: trackById"
+          class="work"
+          [id]="'work-' + w.id"
+          [class.selected]="isSelectedWork(w.id)"
+          (click)="selectWork(w.id)"
+        >
+          <header>
+            <h3>{{ w.title }}</h3>
+            <div class="meta">
+              <span *ngIf="w.authors.length">{{ w.authors.join('; ') }}</span>
+              <span *ngIf="w.year"> · {{ w.year }}</span>
+              <span *ngIf="w.venue"> · {{ w.venue }}</span>
+              <a *ngIf="w.doi" [href]="'https://doi.org/' + w.doi" target="_blank">{{ w.doi }}</a>
+            </div>
+          </header>
+
+          <div class="snowball-counts"
+               *ngIf="!isWorkExpanded(w.id) && (w.last_backward_snowballed_at || w.last_forward_snowballed_at)">
+            <span *ngIf="w.last_backward_snowballed_at" title="backward snowballing">
+              ← <ng-container *ngIf="isSnowballInFlight(w, 'backward'); else bwdCount"><span class="spinner inline" aria-hidden="true"></span></ng-container>
+              <ng-template #bwdCount>{{ w.last_backward_found ?? '?' }}</ng-template>
+            </span>
+            <span *ngIf="w.last_forward_snowballed_at" title="forward snowballing">
+              → <ng-container *ngIf="isSnowballInFlight(w, 'forward'); else fwdCount"><span class="spinner inline" aria-hidden="true"></span></ng-container>
+              <ng-template #fwdCount>{{ w.last_forward_found ?? '?' }}</ng-template>
+            </span>
+          </div>
+
+          <section class="work-details" *ngIf="isWorkExpanded(w.id)">
+            <p class="abstract" *ngIf="w.abstract; else noAbstract">{{ w.abstract }}</p>
+            <ng-template #noAbstract>
+              <p class="abstract empty">No abstract available.</p>
+            </ng-template>
+            <div class="snowball-details">
+              <span>
+                ← {{ w.last_backward_found ?? 0 }} Backward Snowballing
+                <ng-container *ngIf="w.last_backward_snowballed_at; else backwardNotRun">
+                  at {{ w.last_backward_snowballed_at | date:'medium' }}
+                </ng-container>
+                <ng-template #backwardNotRun>not run</ng-template>
+              </span>
+              <span>
+                → {{ w.last_forward_found ?? 0 }} Forward Snowballing
+                <ng-container *ngIf="w.last_forward_snowballed_at; else forwardNotRun">
+                  at {{ w.last_forward_snowballed_at | date:'medium' }}
+                </ng-container>
+                <ng-template #forwardNotRun>not run</ng-template>
+              </span>
+            </div>
+          </section>
+
+          <footer class="triage">
+            <ng-container *ngIf="resultsMode(); else triageMode">
+              <span class="badge" [class.accept]="consensusFor(w.id) === 'accept'" [class.reject]="consensusFor(w.id) === 'reject'">
+                {{ consensusFor(w.id) === 'accept' ? 'accepted' : 'rejected' }}
+              </span>
+              <span class="consensus-votes">
+                {{ voteCountsFor(w.id).selected }} accept · {{ voteCountsFor(w.id).rejected }} reject
+              </span>
+              <span class="consensus-votes" *ngIf="commentCountFor(w.id) as commentCount">
+                {{ commentCount }} {{ commentCount === 1 ? 'comment' : 'comments' }}
+              </span>
+            </ng-container>
+            <ng-template #triageMode>
+              <ng-container *ngIf="activeResearcherId(); else needResearcher">
+                <select
+                  [ngModel]="decisionFor(w.id)?.criterion_id ?? null"
+                  (ngModelChange)="onCriterionChange(w, $event)"
+                >
+                  <option [ngValue]="null">— no decision —</option>
+                  <optgroup label="Include (accept)">
+                    <option *ngFor="let c of includeCriteria()" [ngValue]="c.id">
+                      {{ c.id }}: {{ c.description }}
+                    </option>
+                  </optgroup>
+                  <optgroup label="Exclude (reject)">
+                    <option *ngFor="let c of excludeCriteria()" [ngValue]="c.id">
+                      {{ c.id }}: {{ c.description }}
+                    </option>
+                  </optgroup>
+                </select>
+                <ng-container *ngIf="decisionFor(w.id) as existing">
+                  <span class="badge" [class.accept]="existing.verdict === 'accept'"
+                        [class.reject]="existing.verdict === 'reject'">
+                    {{ existing.verdict }}
+                  </span>
+                </ng-container>
+                <input
+                  type="text"
+                  placeholder="note (optional)"
+                  [ngModel]="noteFor(w.id)"
+                  (ngModelChange)="updateNoteDraft(w.id, $event)"
+                  (blur)="saveNote(w)"
+                  [disabled]="!decisionFor(w.id)"
+                />
+              </ng-container>
+              <ng-template #needResearcher>
+                <em>Select an active researcher to triage.</em>
+              </ng-template>
+            </ng-template>
+            <button
+              type="button"
+              class="details-toggle"
+              [attr.aria-expanded]="isWorkExpanded(w.id)"
+              [attr.aria-label]="isWorkExpanded(w.id) ? 'Collapse details' : 'Expand details'"
+              title="Expand details (f b)"
+              (click)="toggleWorkDetails(w.id); $event.stopPropagation()"
+            >
+              {{ isWorkExpanded(w.id) ? '−' : '+' }}
+            </button>
+          </footer>
+        </article>
+
+        <p *ngIf="!cs.works.length"><em>No works in this set.</em></p>
+      </div>
+    </ng-container>
+
+    <p *ngIf="!sets().length"><em>No sets yet. Import a start set first.</em></p>
+  </div>
+</div>
+
+<div
+  class="dialog-backdrop"
+  *ngIf="criterionDialog() as dialog"
+  (click)="closeCriterionDialog()"
+>
+  <section class="criterion-dialog" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+    <header>
+      <strong>{{ dialog.verdict }}</strong>
+      <button type="button" (click)="closeCriterionDialog()">x</button>
+    </header>
+    <input
+      id="criterion-search"
+      type="text"
+      autofocus
+      placeholder="criterion id or description"
+      [ngModel]="criterionQuery()"
+      (ngModelChange)="updateCriterionQuery($event)"
+      (keydown.enter)="confirmCriterionDialog(); $event.preventDefault()"
+      (keydown.escape)="closeCriterionDialog(); $event.preventDefault()"
+      (keydown.arrowDown)="moveHighlightedCriterion(1); $event.preventDefault()"
+      (keydown.arrowUp)="moveHighlightedCriterion(-1); $event.preventDefault()"
+    />
+    <input
+      type="text"
+      placeholder="justification (optional)"
+      [ngModel]="criterionNote()"
+      (ngModelChange)="updateCriterionNote($event)"
+      (keydown.enter)="confirmCriterionDialog(); $event.preventDefault()"
+      (keydown.escape)="closeCriterionDialog(); $event.preventDefault()"
+    />
+    <ul>
+      <li
+        *ngFor="let c of dialogCriteria(); let i = index; trackBy: trackById"
+        [class.highlighted]="highlightedCriterionIndex() === i"
+        (mouseenter)="highlightedCriterionIndex.set(i)"
+        (click)="confirmCriterionDialog()"
+      >
+        <span class="criterion-id">{{ c.id }}</span>
+        <span class="criterion-description">{{ c.description }}</span>
+      </li>
+    </ul>
+    <p *ngIf="!dialogCriteria().length"><em>No matching criteria.</em></p>
+  </section>
 </div>

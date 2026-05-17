@@ -1,21 +1,21 @@
 import { Routes } from '@angular/router';
 
 export const routes: Routes = [
-  { path: '', redirectTo: 'analysis', pathMatch: 'full' },
+  { path: '', redirectTo: 'snowballing', pathMatch: 'full' },
   {
-    path: 'settings',
-    loadComponent: () => import('./settings/settings').then((m) => m.SettingsComponent),
+    path: 'project',
+    loadComponent: () => import('./project/project').then((m) => m.ProjectComponent),
   },
   {
     path: 'start-set',
     loadComponent: () => import('./start-set/start-set').then((m) => m.StartSetComponent),
   },
   {
-    path: 'analysis',
-    loadComponent: () => import('./analysis/analysis').then((m) => m.AnalysisComponent),
-  },
-  {
     path: 'snowballing',
     loadComponent: () => import('./snowballing/snowballing').then((m) => m.SnowballingComponent),
+  },
+  {
+    path: 'snow-log',
+    loadComponent: () => import('./snow-log/snow-log').then((m) => m.SnowLogComponent),
   },
 ];
