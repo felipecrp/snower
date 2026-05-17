@@ -277,7 +277,65 @@
   }
 
   header {
-    padding-right: 11rem;
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+
+    .paper-links {
+      display: flex;
+      gap: 0.5rem;
+      flex-shrink: 0;
+      margin-top: 0.25rem;
+    }
+
+    .paper-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      border: 1px solid #d1d5db;
+      background: white;
+      color: #2563eb;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      padding: 0;
+      font-size: 0;
+
+      svg {
+        width: 16px;
+        height: 16px;
+        display: block;
+      }
+
+      &:hover {
+        background: #dbeafe;
+        border-color: #2563eb;
+      }
+
+      &.scihub {
+        color: #7c3aed;
+
+        &:hover {
+          background: #ede9fe;
+          border-color: #7c3aed;
+        }
+      }
+
+      &.local-pdf {
+        color: #059669;
+
+        &:hover {
+          background: #d1fae5;
+          border-color: #059669;
+        }
+      }
+    }
+
   }
 
   .details-toggle {

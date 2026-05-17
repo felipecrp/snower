@@ -51,6 +51,7 @@ export interface Work {
   last_forward_snowballed_at?: string | null;
   last_backward_found?: number | null;
   last_forward_found?: number | null;
+  has_local_pdf?: boolean;
 }
 
 export interface ReviewSet {

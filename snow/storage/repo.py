@@ -59,6 +59,7 @@ SNOWBALLING_FILE = "snowballing.yml"
 SETS_DIR = "sets"
 SET_FILE = "set.yml"
 WORKS_DIR = "works"
+DOWNLOADS_DIR = "downloads"
 RESOLUTIONS_FILE = "resolutions.yml"
 DECISIONS_PREFIX = "decisions_"
 
@@ -168,6 +169,12 @@ class ProjectRepo:
     def work_path(self, bib_key: str) -> Path:
         return self.works_dir() / f"{bib_key}.bib"
 
+    def downloads_dir(self) -> Path:
+        return self.root / DOWNLOADS_DIR
+
+    def pdf_path(self, bib_key: str) -> Path:
+        return self.downloads_dir() / f"{bib_key}.pdf"
+
     def load_work(self, bib_key: str) -> Work | None:
         path = self.work_path(bib_key)
         if not path.exists():
@@ -222,6 +229,7 @@ class ProjectRepo:
             if w is None:
                 logger.warning("Set %s lists bib_key %s but %s is missing", set_id, key, self.work_path(key))
                 continue
+            w.has_local_pdf = self.pdf_path(key).exists()
             works.append(w)
         self._merge_snowball_timestamps(works)
         return Set(

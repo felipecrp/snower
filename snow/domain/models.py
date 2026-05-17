@@ -92,6 +92,7 @@ class Work(BaseModel):
     last_forward_snowballed_at: datetime | None = None
     last_backward_found: int | None = None
     last_forward_found: int | None = None
+    has_local_pdf: bool = False
 
 
 class Set(BaseModel):

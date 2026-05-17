@@ -902,5 +902,13 @@ export class SnowballingComponent {
     return `${num} ${word}${kindLabel ? ' ' + kindLabel : ''}`.trim();
   }
 
+  hasPaperLinks(work: Work): boolean {
+    return !!(work.url || work.pdf_url || work.doi);
+  }
+
+  localPdfUrl(bib_key: string): string {
+    return this.api.localPdfUrl(bib_key);
+  }
+
   trackById = (_: number, x: { id: string }) => x.id;
 }

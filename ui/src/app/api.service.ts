@@ -116,6 +116,10 @@ export class ApiService {
     );
   }
 
+  localPdfUrl(bib_key: string): string {
+    return `/api/downloads/${encodeURIComponent(bib_key)}`;
+  }
+
   private researcherHeaders(): HttpHeaders {
     const id = this.researcher.activeId();
     let headers = new HttpHeaders();

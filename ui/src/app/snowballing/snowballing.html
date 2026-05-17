@@ -136,12 +136,50 @@
           (click)="selectWork(w.id)"
         >
           <header>
-            <h3>{{ w.title }}</h3>
-            <div class="meta">
-              <span *ngIf="w.authors.length">{{ w.authors.join('; ') }}</span>
-              <span *ngIf="w.year"> · {{ w.year }}</span>
-              <span *ngIf="w.venue"> · {{ w.venue }}</span>
-              <a *ngIf="w.doi" [href]="'https://doi.org/' + w.doi" target="_blank">{{ w.doi }}</a>
+            <div class="header-content">
+              <div>
+                <h3>{{ w.title }}</h3>
+                <div class="meta">
+                  <span *ngIf="w.authors.length">{{ w.authors.join('; ') }}</span>
+                  <span *ngIf="w.year"> · {{ w.year }}</span>
+                  <span *ngIf="w.venue"> · {{ w.venue }}</span>
+                  <a *ngIf="w.doi" [href]="'https://doi.org/' + w.doi" target="_blank">{{ w.doi }}</a>
+                </div>
+              </div>
+              <div class="paper-links" *ngIf="hasPaperLinks(w)">
+                <a *ngIf="w.url" [href]="w.url" target="_blank" title="Open paper URL" class="paper-link">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                  </svg>
+                </a>
+                <a *ngIf="w.doi && !w.url" [href]="'https://doi.org/' + w.doi" target="_blank" title="Open paper via DOI" class="paper-link">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                  </svg>
+                </a>
+                <a *ngIf="w.pdf_url" [href]="w.pdf_url" target="_blank" title="Open PDF" class="paper-link">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                    <polyline points="13 2 13 9 20 9"></polyline>
+                    <line x1="12" y1="19" x2="12" y2="12"></line>
+                    <polyline points="9 16 12 13 15 16"></polyline>
+                  </svg>
+                </a>
+                <a *ngIf="w.doi" [href]="'https://sci-hub.st/' + w.doi" target="_blank" title="Open on Sci-Hub" class="paper-link scihub">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M12 6v6l4 2"></path>
+                  </svg>
+                </a>
+                <a *ngIf="w.has_local_pdf" [href]="localPdfUrl(w.bib_key)" target="_blank" title="Open local PDF" class="paper-link local-pdf">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                    <polyline points="13 2 13 9 20 9"></polyline>
+                  </svg>
+                </a>
+              </div>
             </div>
           </header>
 
