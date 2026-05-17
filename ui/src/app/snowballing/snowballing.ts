@@ -130,9 +130,16 @@ export class SnowballingComponent {
   });
 
   private static readonly LAST_SET_KEY = 'snow:last-set';
+  private static readonly SHOW_PENDING_KEY = 'snow:show-pending';
+  private static readonly SHOW_SELECTED_KEY = 'snow:show-selected';
+  private static readonly SHOW_REJECTED_KEY = 'snow:show-rejected';
+  private static readonly RESULTS_MODE_KEY = 'snow:results-mode';
+  private static readonly SORT_FIELD_KEY = 'snow:sort-field';
   private setAutoSelected = false;
 
   constructor() {
+    this.loadFilterPreferences();
+
     effect(() => {
       const sets = this.sets();
       if (!sets.length || this.setAutoSelected) return;
@@ -143,6 +150,15 @@ export class SnowballingComponent {
         sets.find((s) => s.id === '00-start') ??
         sets[0];
       this.selectSet(target);
+    });
+
+    // Save filter preferences when they change
+    effect(() => {
+      localStorage.setItem(SnowballingComponent.SHOW_PENDING_KEY, String(this.showPending()));
+      localStorage.setItem(SnowballingComponent.SHOW_SELECTED_KEY, String(this.showSelected()));
+      localStorage.setItem(SnowballingComponent.SHOW_REJECTED_KEY, String(this.showRejected()));
+      localStorage.setItem(SnowballingComponent.RESULTS_MODE_KEY, String(this.resultsMode()));
+      localStorage.setItem(SnowballingComponent.SORT_FIELD_KEY, this.sortField());
     });
 
     // When filters/sort change, keep selected paper visible; if filtered out, pick next.
@@ -159,6 +175,25 @@ export class SnowballingComponent {
       this.selectedWorkId.set(next.id);
       setTimeout(() => this.scrollToWork(next.id));
     });
+  }
+
+  private loadFilterPreferences(): void {
+    const showPending = localStorage.getItem(SnowballingComponent.SHOW_PENDING_KEY);
+    if (showPending !== null) this.showPending.set(showPending === 'true');
+
+    const showSelected = localStorage.getItem(SnowballingComponent.SHOW_SELECTED_KEY);
+    if (showSelected !== null) this.showSelected.set(showSelected === 'true');
+
+    const showRejected = localStorage.getItem(SnowballingComponent.SHOW_REJECTED_KEY);
+    if (showRejected !== null) this.showRejected.set(showRejected === 'true');
+
+    const resultsMode = localStorage.getItem(SnowballingComponent.RESULTS_MODE_KEY);
+    if (resultsMode !== null) this.resultsMode.set(resultsMode === 'true');
+
+    const sortField = localStorage.getItem(SnowballingComponent.SORT_FIELD_KEY);
+    if (sortField && SORT_FIELDS.includes(sortField as SortField)) {
+      this.sortField.set(sortField as SortField);
+    }
   }
 
   selectSet(s: ReviewSet): void {
@@ -445,7 +480,18 @@ export class SnowballingComponent {
     const current = this.currentSet();
     if (current) {
       const refreshed = updatedSets.find((s) => s.id === current.id);
-      if (refreshed) this.currentSet.set(refreshed);
+      if (refreshed) {
+        this.currentSet.set(refreshed);
+      } else {
+        this.api.getSet(current.id).subscribe({
+          next: (freshSet) => {
+            this.currentSet.set(freshSet);
+            this.projectSvc.sets.update((all) =>
+              all.map((s) => s.id === freshSet.id ? freshSet : s)
+            );
+          },
+        });
+      }
     }
   }
 
@@ -845,6 +891,15 @@ export class SnowballingComponent {
     if (!a && b) return 1;
     if (a && !b) return -1;
     return a.localeCompare(b, undefined, { sensitivity: 'base' });
+  }
+
+  formatSetTitle(id: string, kind: string): string {
+    const match = id.match(/^(\d+)-(.+)$/);
+    if (!match) return id;
+    const [, num, slug] = match;
+    const word = slug.charAt(0).toUpperCase() + slug.slice(1);
+    const kindLabel = kind === 'start' ? 'Set' : '';
+    return `${num} ${word}${kindLabel ? ' ' + kindLabel : ''}`.trim();
   }
 
   trackById = (_: number, x: { id: string }) => x.id;

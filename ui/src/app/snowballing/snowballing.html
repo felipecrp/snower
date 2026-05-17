@@ -8,22 +8,21 @@
         [class.pending]="projectSvc.pendingSetIds().has(s.id)"
         (click)="selectSet(s)"
       >
-        <span class="set-id">{{ s.id }}</span>
-        <span class="set-kind">{{ s.kind }}</span>
+        <span class="set-title">{{ formatSetTitle(s.id, s.kind) }}</span>
         <span class="set-count">
           <span *ngIf="projectSvc.pendingSetIds().has(s.id)" class="spinner" aria-hidden="true"></span>
           {{ consensusCountFor(s).accepted }}/{{ s.works.length }}
         </span>
       </li>
     </ul>
-    <div class="orphan-section" *ngIf="orphanSet() as os">
-      <div class="orphan-label">Orphans</div>
+    <div class="orphan-item-container" *ngIf="orphanSet() as os">
       <li
         [class.active]="currentSet()?.id === os.id"
         [class.pending]="projectSvc.pendingSetIds().has(os.id)"
         (click)="selectSet(os)"
+        class="orphan-item"
       >
-        <span class="set-id">orphan</span>
+        <span class="set-title">Orphan</span>
         <span class="set-count">
           <span *ngIf="projectSvc.pendingSetIds().has(os.id)" class="spinner" aria-hidden="true"></span>
           {{ os.works.length }}
