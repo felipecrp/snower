@@ -147,6 +147,7 @@ table {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 0.75rem;
+  table-layout: fixed;
 
   th, td {
     text-align: left;
@@ -169,6 +170,19 @@ table {
     border-radius: 6px;
     font-size: 0.9rem;
   }
+}
+
+table.researchers-table {
+  th:nth-child(1), td:nth-child(1) { width: 45%; }
+  th:nth-child(2), td:nth-child(2) { width: 45%; }
+  th:nth-child(3), td:nth-child(3) { width: 80px; }
+}
+
+table.criteria-table {
+  th:nth-child(1), td:nth-child(1) { width: 120px; }
+  th:nth-child(2), td:nth-child(2) { width: 100px; }
+  th:nth-child(3), td:nth-child(3) { width: auto; }
+  th:nth-child(4), td:nth-child(4) { width: 80px; }
 }
 
 .actions {
