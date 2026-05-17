@@ -3,13 +3,17 @@ export type Verdict = 'accept' | 'reject';
 export type CriterionKind = 'include' | 'exclude';
 
 export interface Researcher {
-  id: string;
+  email: string;
   name: string;
-  email?: string | null;
 }
 
 export interface ResearcherInput extends Researcher {
-  previous_id?: string | null;
+  previous_email?: string | null;
+}
+
+export interface GitUser {
+  name: string | null;
+  email: string | null;
 }
 
 export interface Criterion {
@@ -92,10 +96,10 @@ export interface DecisionInput {
 export interface WorkspaceInfo {
   path: string;
   name: string;
+  researcher_email?: string | null;
 }
 
 export interface ProjectInfoInput {
   name: string;
   description?: string | null;
-  openalex_email?: string | null;
 }

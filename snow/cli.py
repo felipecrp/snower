@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 
 import typer
@@ -10,6 +11,7 @@ import uvicorn
 
 from snow.api.app import create_app
 from snow.domain.models import Project
+from snow.git_utils import git_available, git_user_email, git_user_name
 from snow.providers.factory import get_enrichment_provider
 from snow.storage import bib
 from snow.storage.repo import ProjectRepo
@@ -56,7 +58,7 @@ def import_bib(
         typer.echo(f"{bib_path}: parsed 0 entries — file may be empty or malformed.", err=True)
         raise typer.Exit(code=1)
     works = repo.merge_with_library(works)
-    works = get_enrichment_provider(repo.load_project()).enrich_works(works)
+    works = get_enrichment_provider(repo.load_project(), email=git_user_email()).enrich_works(works)
     start = repo.import_start_set(works)
     typer.echo(f"Imported {len(start.works)} works into {start.id}")
 
@@ -89,6 +91,22 @@ def serve(
     used project in localStorage)."""
     if project is not None and not (project / "project.yml").exists():
         typer.echo(f"No snow project at {project} — run `snow init` first.", err=True)
+        raise typer.Exit(code=1)
+    if not git_available():
+        typer.echo(
+            "Error: git is not installed or not on PATH.\n"
+            "Snow requires git to identify researchers. Please install git and try again.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if not git_user_name() or not git_user_email():
+        typer.echo(
+            "Error: git global user identity is not configured.\n"
+            "Please run:\n"
+            "  git config --global user.name  \"Your Name\"\n"
+            "  git config --global user.email \"you@example.com\"",
+            err=True,
+        )
         raise typer.Exit(code=1)
     _configure_logging(project)
     fastapi_app = create_app(project)

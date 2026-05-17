@@ -26,11 +26,6 @@
       <input id="proj-desc" type="text" [ngModel]="projectDescription()" (ngModelChange)="projectDescription.set($event)" placeholder="Optional description" />
     </div>
 
-    <div class="field-row">
-      <label for="openalex-email">OpenAlex email</label>
-      <input id="openalex-email" type="email" [ngModel]="openAlexEmail()" (ngModelChange)="openAlexEmail.set($event)" placeholder="you@example.com (polite pool)" />
-    </div>
-
     <div class="actions">
       <button class="primary" (click)="saveProjectInfo()">Save project info</button>
     </div>
@@ -41,21 +36,19 @@
     <table>
       <thead>
         <tr>
-          <th>id</th>
-          <th>name</th>
           <th>email</th>
+          <th>name</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         <tr *ngFor="let r of researchers(); let i = index">
-          <td><input type="text" [(ngModel)]="r.id" placeholder="alice" /></td>
-          <td><input type="text" [(ngModel)]="r.name" placeholder="Alice Researcher" /></td>
           <td><input type="email" [(ngModel)]="r.email" placeholder="alice@example.com" /></td>
+          <td><input type="text" [(ngModel)]="r.name" placeholder="Alice Researcher" /></td>
           <td><button class="danger" (click)="removeResearcher(i)">Remove</button></td>
         </tr>
         <tr *ngIf="!researchers().length">
-          <td colspan="4"><em>No researchers yet.</em></td>
+          <td colspan="3"><em>No researchers yet.</em></td>
         </tr>
       </tbody>
     </table>
@@ -63,6 +56,22 @@
       <button (click)="addResearcher()">Add researcher</button>
       <button class="primary" (click)="saveResearchers()">Save researchers</button>
     </div>
+  </section>
+
+  <section>
+    <h2>Identification</h2>
+    <ng-container *ngIf="currentResearcher() as r">
+      <div class="field-row">
+        <label>Name</label>
+        <span>{{ r.name }}</span>
+      </div>
+      <div class="field-row">
+        <label>Email</label>
+        <span>{{ r.email }}</span>
+      </div>
+      <p class="hint">OpenAlex API requests use this email for polite-pool access.</p>
+    </ng-container>
+    <p *ngIf="!currentResearcher()"><em>No researcher selected. Choose one from the topbar.</em></p>
   </section>
 
   <section>

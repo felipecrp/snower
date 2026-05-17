@@ -12,28 +12,30 @@ class DescribeGetProject:
         assert r.status_code == 200
         body = r.json()
         assert body["name"] == "demo"
-        assert [r["id"] for r in body["researchers"]] == ["alice", "bob"]
+        emails = [r["email"] for r in body["researchers"]]
+        assert "alice@example.com" in emails
+        assert "bob@example.com" in emails
         assert [c["id"] for c in body["criteria"]] == ["inc1", "exc1"]
 
 
 class DescribeReplaceResearchers:
     def it_replaces_the_list(self, client: TestClient):
         new_list = [
-            {"id": "carol", "name": "Carol", "email": "carol@example.com"},
-            {"id": "dave", "name": "Dave"},
+            {"email": "carol@example.com", "name": "Carol"},
+            {"email": "dave@example.com", "name": "Dave"},
         ]
         r = client.put("/api/project/researchers", json=new_list)
         assert r.status_code == 200
-        assert [x["id"] for x in r.json()] == ["carol", "dave"]
+        assert {x["email"] for x in r.json()} == {"carol@example.com", "dave@example.com"}
 
         body = client.get("/api/project").json()
-        assert [x["id"] for x in body["researchers"]] == ["carol", "dave"]
+        assert {x["email"] for x in body["researchers"]} == {"carol@example.com", "dave@example.com"}
         assert body["name"] == "demo"  # other fields preserved
 
-    def it_rejects_duplicate_ids(self, client: TestClient):
+    def it_rejects_duplicate_emails(self, client: TestClient):
         r = client.put(
             "/api/project/researchers",
-            json=[{"id": "x", "name": "A"}, {"id": "x", "name": "B"}],
+            json=[{"email": "x@x.com", "name": "A"}, {"email": "x@x.com", "name": "B"}],
         )
         assert r.status_code == 400
 
@@ -61,7 +63,7 @@ class DescribeReplaceCriteria:
         assert r.status_code == 400
 
 
-def _seed_decision(project_dir, researcher_id: str, criterion_id: str | None = "inc1"):
+def _seed_decision(project_dir, researcher_id: str = "alice@example.com", criterion_id: str | None = "inc1"):
     repo = ProjectRepo(project_dir)
     decisions = [
         Decision(
@@ -90,51 +92,51 @@ def _seed_resolution(project_dir, by: str):
 
 
 class DescribeRenameResearcher:
-    def it_propagates_id_change_to_decisions(self, client: TestClient, project_dir):
-        _seed_decision(project_dir, researcher_id="alice")
+    def it_propagates_email_change_to_decisions(self, client: TestClient, project_dir):
+        _seed_decision(project_dir, researcher_id="alice@example.com")
         r = client.put(
             "/api/project/researchers",
             json=[
-                {"id": "alice_smith", "name": "Alice", "previous_id": "alice"},
-                {"id": "bob", "name": "Bob"},
+                {"email": "alice.smith@example.com", "name": "Alice", "previous_email": "alice@example.com"},
+                {"email": "bob@example.com", "name": "Bob"},
             ],
         )
         assert r.status_code == 200
         decisions = client.get("/api/sets/00-start/decisions").json()["decisions"]
-        assert [d["researcher_id"] for d in decisions] == ["alice_smith"]
+        assert [d["researcher_id"] for d in decisions] == ["alice.smith@example.com"]
 
-    def it_propagates_id_change_to_resolution_by(self, client: TestClient, project_dir):
-        _seed_decision(project_dir, researcher_id="alice")
-        _seed_resolution(project_dir, by="alice")
+    def it_propagates_email_change_to_resolution_by(self, client: TestClient, project_dir):
+        _seed_decision(project_dir, researcher_id="alice@example.com")
+        _seed_resolution(project_dir, by="alice@example.com")
         client.put(
             "/api/project/researchers",
             json=[
-                {"id": "alice_smith", "name": "Alice", "previous_id": "alice"},
-                {"id": "bob", "name": "Bob"},
+                {"email": "alice.smith@example.com", "name": "Alice", "previous_email": "alice@example.com"},
+                {"email": "bob@example.com", "name": "Bob"},
             ],
         )
         resolutions = client.get("/api/sets/00-start/decisions").json()["resolutions"]
-        assert [r["by"] for r in resolutions] == ["alice_smith"]
+        assert [r["by"] for r in resolutions] == ["alice.smith@example.com"]
 
     def it_leaves_non_researcher_resolutions_alone(self, client: TestClient, project_dir):
-        _seed_decision(project_dir, researcher_id="alice")
+        _seed_decision(project_dir, researcher_id="alice@example.com")
         _seed_resolution(project_dir, by="vote")
         client.put(
             "/api/project/researchers",
             json=[
-                {"id": "alice_smith", "name": "Alice", "previous_id": "alice"},
-                {"id": "bob", "name": "Bob"},
+                {"email": "alice.smith@example.com", "name": "Alice", "previous_email": "alice@example.com"},
+                {"email": "bob@example.com", "name": "Bob"},
             ],
         )
         resolutions = client.get("/api/sets/00-start/decisions").json()["resolutions"]
         assert resolutions[0]["by"] == "vote"
 
-    def it_rejects_unknown_previous_id(self, client: TestClient):
+    def it_rejects_unknown_previous_email(self, client: TestClient):
         r = client.put(
             "/api/project/researchers",
             json=[
-                {"id": "x", "name": "X", "previous_id": "ghost"},
-                {"id": "bob", "name": "Bob"},
+                {"email": "x@x.com", "name": "X", "previous_email": "ghost@example.com"},
+                {"email": "bob@example.com", "name": "Bob"},
             ],
         )
         assert r.status_code == 400
@@ -142,27 +144,27 @@ class DescribeRenameResearcher:
 
 class DescribeRemoveResearcher:
     def it_deletes_their_decisions_across_all_sets(self, client: TestClient, project_dir):
-        _seed_decision(project_dir, researcher_id="alice")
-        _seed_decision(project_dir, researcher_id="bob")
+        _seed_decision(project_dir, researcher_id="alice@example.com")
+        _seed_decision(project_dir, researcher_id="bob@example.com")
         r = client.put(
             "/api/project/researchers",
-            json=[{"id": "bob", "name": "Bob"}],
+            json=[{"email": "bob@example.com", "name": "Bob"}],
         )
         assert r.status_code == 200
         decisions = client.get("/api/sets/00-start/decisions").json()["decisions"]
-        assert [d["researcher_id"] for d in decisions] == ["bob"]
+        assert [d["researcher_id"] for d in decisions] == ["bob@example.com"]
 
     def it_leaves_resolutions_intact(self, client: TestClient, project_dir):
-        _seed_decision(project_dir, researcher_id="alice")
-        _seed_resolution(project_dir, by="alice")
-        client.put("/api/project/researchers", json=[{"id": "bob", "name": "Bob"}])
+        _seed_decision(project_dir, researcher_id="alice@example.com")
+        _seed_resolution(project_dir, by="alice@example.com")
+        client.put("/api/project/researchers", json=[{"email": "bob@example.com", "name": "Bob"}])
         resolutions = client.get("/api/sets/00-start/decisions").json()["resolutions"]
         assert len(resolutions) == 1
 
 
 class DescribeRenameCriterion:
     def it_propagates_id_change_to_decisions(self, client: TestClient, project_dir):
-        _seed_decision(project_dir, researcher_id="alice", criterion_id="inc1")
+        _seed_decision(project_dir, researcher_id="alice@example.com", criterion_id="inc1")
         r = client.put(
             "/api/project/criteria",
             json=[

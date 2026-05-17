@@ -2,12 +2,14 @@ import { Injectable, inject, signal } from '@angular/core';
 
 import { ApiService } from './api.service';
 import { Decision, Project, ReviewSet, WorkspaceInfo } from './models';
+import { ResearcherService } from './researcher.service';
 
 const LAST_PROJECT_KEY = 'snow:last-project';
 
 @Injectable({ providedIn: 'root' })
 export class ProjectService {
   private readonly api = inject(ApiService);
+  private readonly researcherSvc = inject(ResearcherService);
 
   readonly project = signal<Project | null>(null);
   readonly sets = signal<ReviewSet[]>([]);
@@ -68,14 +70,18 @@ export class ProjectService {
   applyWorkspace(w: WorkspaceInfo): void {
     this.rememberProjectPath(w.path);
     this.finishBootstrap(w);
-    this.refresh();
+    this.refresh(w.researcher_email);
   }
 
-  refresh(): void {
+  refresh(autoSelectResearcherEmail?: string | null): void {
     this.api.getProject().subscribe({
       next: (p) => {
         this.project.set(p);
         document.title = `Snow - ${p.name}`;
+        // Set researcher AFTER project loads so options exist in topbar select
+        if (autoSelectResearcherEmail) {
+          this.researcherSvc.set(autoSelectResearcherEmail);
+        }
       },
       error: (e) => this.handleProjectError(e),
     });

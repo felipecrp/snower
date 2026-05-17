@@ -8,6 +8,7 @@ import {
   Decision,
   DecisionInput,
   DecisionsResponse,
+  GitUser,
   Project,
   ProjectInfoInput,
   Researcher,
@@ -45,16 +46,20 @@ export class ApiService {
   }
 
   runSnowballing(): Observable<ReviewSet[]> {
-    return this.http.post<ReviewSet[]>('/api/snowballing', {});
+    return this.http.post<ReviewSet[]>('/api/snowballing', {}, { headers: this.researcherHeaders() });
   }
 
   runGlobalSnowballing(kind: Exclude<SetKind, 'start'>, force = false): Observable<ReviewSet[]> {
     const params = force ? '?force=true' : '';
-    return this.http.post<ReviewSet[]>(`/api/snowballing/${kind}${params}`, {});
+    return this.http.post<ReviewSet[]>(`/api/snowballing/${kind}${params}`, {}, { headers: this.researcherHeaders() });
   }
 
   runPaperSnowballing(kind: Exclude<SetKind, 'start'>, bibKey: string): Observable<ReviewSet[]> {
-    return this.http.post<ReviewSet[]>(`/api/snowballing/${kind}/${encodeURIComponent(bibKey)}`, {});
+    return this.http.post<ReviewSet[]>(`/api/snowballing/${kind}/${encodeURIComponent(bibKey)}`, {}, { headers: this.researcherHeaders() });
+  }
+
+  getGitUser(): Observable<GitUser> {
+    return this.http.get<GitUser>('/api/git-user');
   }
 
   importBib(setId: string, file: File): Observable<ReviewSet> {

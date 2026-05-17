@@ -14,7 +14,7 @@ class DescribeUpsertDecision:
         assert r.status_code == 200
         body = r.json()
         assert body["verdict"] == "accept"
-        assert body["researcher_id"] == "alice"
+        assert body["researcher_id"] == "alice@example.com"
         assert body["bib_key"] == BIB_KEY
 
     def it_replaces_previous_decision_by_same_researcher(
@@ -32,7 +32,7 @@ class DescribeUpsertDecision:
         )
         r = client.get("/api/sets/00-start/decisions")
         body = r.json()
-        alice_decisions = [d for d in body["decisions"] if d["researcher_id"] == "alice"]
+        alice_decisions = [d for d in body["decisions"] if d["researcher_id"] == "alice@example.com"]
         assert len(alice_decisions) == 1
         assert alice_decisions[0]["verdict"] == "reject"
 
@@ -40,12 +40,12 @@ class DescribeUpsertDecision:
         client.put(
             f"/api/sets/00-start/decisions/{BIB_KEY}",
             json={"verdict": "accept"},
-            headers={"X-Researcher-Id": "alice"},
+            headers={"X-Researcher-Id": "alice@example.com"},
         )
         client.put(
             f"/api/sets/00-start/decisions/{BIB_KEY}",
             json={"verdict": "reject"},
-            headers={"X-Researcher-Id": "bob"},
+            headers={"X-Researcher-Id": "bob@example.com"},
         )
         r = client.get("/api/sets/00-start/decisions")
         body = r.json()
@@ -87,10 +87,10 @@ class DescribeDeleteDecision:
         client.put(
             f"/api/sets/00-start/decisions/{BIB_KEY}",
             json={"verdict": "reject"},
-            headers={"X-Researcher-Id": "bob"},
+            headers={"X-Researcher-Id": "bob@example.com"},
         )
         r = client.delete(f"/api/sets/00-start/decisions/{BIB_KEY}", headers=alice_headers)
         assert r.status_code == 204
 
         body = client.get("/api/sets/00-start/decisions").json()
-        assert [d["researcher_id"] for d in body["decisions"]] == ["bob"]
+        assert [d["researcher_id"] for d in body["decisions"]] == ["bob@example.com"]

@@ -54,7 +54,7 @@ async def import_bib(
     finally:
         tmp_path.unlink(missing_ok=True)
     works = repo.merge_with_library(works)
-    works = get_enrichment_provider(repo.load_project()).enrich_works(works)
+    works = get_enrichment_provider(repo.load_project(), email=x_researcher_id).enrich_works(works)
     criteria = repo.load_project().criteria if x_researcher_id else None
     try:
         return repo.import_bib_to_set(set_id, works, criteria=criteria, researcher_id=x_researcher_id)
@@ -92,7 +92,7 @@ async def import_work(
     if set_id not in repo.list_set_ids():
         raise HTTPException(404, f"Set not found: {set_id}")
     works = repo.merge_with_library([work])
-    works = get_enrichment_provider(repo.load_project()).enrich_works(works)
+    works = get_enrichment_provider(repo.load_project(), email=x_researcher_id).enrich_works(works)
     criteria = repo.load_project().criteria if x_researcher_id else None
     try:
         updated_set = repo.import_bib_to_set(set_id, works, criteria=criteria, researcher_id=x_researcher_id)

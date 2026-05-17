@@ -15,8 +15,6 @@ from pydantic import BaseModel, Field, field_validator
 
 from snow.domain.identity import WorkRef
 
-_ID_RE = re.compile(r"^[a-z0-9_]+$")
-
 
 class SetKind(StrEnum):
     START = "start"
@@ -35,18 +33,20 @@ class Verdict(StrEnum):
     REJECT = "reject"
 
 
-class Researcher(BaseModel):
-    id: str
-    name: str
-    email: str | None = None
+_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
-    @field_validator("id", mode="before")
+
+class Researcher(BaseModel):
+    email: str
+    name: str
+
+    @field_validator("email", mode="before")
     @classmethod
-    def normalize_id(cls, v: str) -> str:
-        normalized = v.lower().strip()
-        if not _ID_RE.match(normalized):
-            raise ValueError(f"Researcher id must contain only letters, digits, or underscores (got {v!r})")
-        return normalized
+    def normalize_email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not v:
+            raise ValueError("Researcher email is required")
+        return v
 
 
 class Criterion(BaseModel):

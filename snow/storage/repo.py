@@ -43,6 +43,7 @@ from snow.domain.models import (
     Decision,
     Project,
     Relation,
+    Researcher,
     Resolution,
     Set,
     SetKind,
@@ -61,6 +62,7 @@ SETS_DIR = "sets"
 SET_FILE = "set.yml"
 WORKS_DIR = "works"
 DOWNLOADS_DIR = "downloads"
+RESEARCHERS_DIR = "researchers"
 RESOLUTIONS_FILE = "resolutions.yml"
 DECISIONS_PREFIX = "decisions_"
 
@@ -132,10 +134,40 @@ class ProjectRepo:
 
     def load_project(self) -> Project:
         data = yml.load(self.project_path()) or {}
-        return Project.model_validate(data)
+        project = Project.model_validate(data)
+        project.researchers = self.list_researchers()
+        return project
 
     def save_project(self, project: Project) -> None:
-        yml.dump(project.model_dump(mode="json", exclude_none=True), self.project_path())
+        yml.dump(project.model_dump(mode="json", exclude_none=True, exclude={"researchers"}), self.project_path())
+
+    # --- researchers (per-file) -----------------------------------------
+
+    def researchers_dir(self) -> Path:
+        return self.root / RESEARCHERS_DIR
+
+    def researcher_path(self, email: str) -> Path:
+        return self.researchers_dir() / f"{email}.yml"
+
+    def list_researchers(self) -> list[Researcher]:
+        rdir = self.researchers_dir()
+        if not rdir.exists():
+            return []
+        researchers: list[Researcher] = []
+        for path in sorted(rdir.glob("*.yml")):
+            data = yml.load(path) or {}
+            email = path.stem
+            researchers.append(Researcher(email=email, name=data.get("name", email)))
+        return researchers
+
+    def save_researcher(self, r: Researcher) -> None:
+        self.researchers_dir().mkdir(parents=True, exist_ok=True)
+        yml.dump({"name": r.name}, self.researcher_path(r.email))
+
+    def delete_researcher(self, email: str) -> None:
+        path = self.researcher_path(email)
+        if path.exists():
+            path.unlink()
 
     # --- sets -----------------------------------------------------------
 
@@ -978,11 +1010,14 @@ class ProjectRepo:
         self.root.mkdir(parents=True, exist_ok=True)
         self.save_project(project)
         self.ensure_scaffolding()
+        for r in project.researchers:
+            self.save_researcher(r)
 
     def ensure_scaffolding(self) -> None:
         """Idempotently create the directory layout and the empty start set."""
         self.sets_dir().mkdir(parents=True, exist_ok=True)
         self.works_dir().mkdir(parents=True, exist_ok=True)
+        self.researchers_dir().mkdir(parents=True, exist_ok=True)
         if not self.relations_path().exists():
             self.save_relations([])
         if not self.set_dir("00-start").root.exists():

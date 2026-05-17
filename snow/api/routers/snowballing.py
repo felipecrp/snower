@@ -13,7 +13,7 @@ Provider selection (project.yml):
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 
 from snow.api.state import get_repo
 from snow.domain.models import Set, SetKind
@@ -24,9 +24,12 @@ router = APIRouter(prefix="/api/snowballing", tags=["snowballing"])
 
 
 @router.post("", response_model=list[Set])
-def run_snowballing_all(repo: ProjectRepo = Depends(get_repo)) -> list[Set]:
+def run_snowballing_all(
+    repo: ProjectRepo = Depends(get_repo),
+    x_researcher_id: str | None = Header(default=None),
+) -> list[Set]:
     """Run backward then forward snowballing, returning all updated sets."""
-    provider = get_provider(repo.load_project())
+    provider = get_provider(repo.load_project(), email=x_researcher_id)
     updated: dict[str, Set] = {}
     for kind in (SetKind.BACKWARD, SetKind.FORWARD):
         for s in repo.run_global_snowballing(kind, provider):
@@ -39,10 +42,11 @@ def run_snowballing(
     kind: SetKind,
     force: bool = False,
     repo: ProjectRepo = Depends(get_repo),
+    x_researcher_id: str | None = Header(default=None),
 ) -> list[Set]:
     if kind == SetKind.START:
         raise HTTPException(400, "Snowballing kind must be backward or forward.")
-    provider = get_provider(repo.load_project())
+    provider = get_provider(repo.load_project(), email=x_researcher_id)
     try:
         return repo.run_global_snowballing(kind, provider, force=force)
     except ValueError as e:
@@ -54,11 +58,12 @@ def run_paper_snowballing(
     kind: SetKind,
     bib_key: str,
     repo: ProjectRepo = Depends(get_repo),
+    x_researcher_id: str | None = Header(default=None),
 ) -> list[Set]:
     """Snowball a single paper. Returns all sets that were created or updated."""
     if kind == SetKind.START:
         raise HTTPException(400, "Snowballing kind must be backward or forward.")
-    provider = get_provider(repo.load_project())
+    provider = get_provider(repo.load_project(), email=x_researcher_id)
     try:
         return repo.run_paper_snowballing(kind, bib_key, provider)
     except ValueError as e:

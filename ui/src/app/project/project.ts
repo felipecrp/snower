@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { ApiService } from '../api.service';
@@ -12,9 +12,10 @@ import {
   WorkspaceInfo,
 } from '../models';
 import { ProjectService } from '../project.service';
+import { ResearcherService } from '../researcher.service';
 
 interface ResearcherRow extends Researcher {
-  originalId: string;
+  originalEmail: string;
 }
 
 interface CriterionRow extends Criterion {
@@ -33,15 +34,20 @@ type Dialog = 'new' | 'open' | null;
 export class ProjectComponent {
   private readonly api = inject(ApiService);
   private readonly projectSvc = inject(ProjectService);
+  private readonly researcherSvc = inject(ResearcherService);
 
   readonly workspace = signal<WorkspaceInfo | null>(null);
   readonly projectName = signal('');
   readonly projectDescription = signal('');
-  readonly openAlexEmail = signal('');
   readonly researchers = signal<ResearcherRow[]>([]);
   readonly criteria = signal<CriterionRow[]>([]);
   readonly error = signal<string | null>(null);
   readonly saved = signal<string | null>(null);
+
+  readonly currentResearcher = computed(() => {
+    const email = this.researcherSvc.activeId();
+    return this.researchers().find((r) => r.email === email) ?? null;
+  });
 
   readonly dialog = signal<Dialog>(null);
   readonly dialogPath = signal('');
@@ -72,9 +78,7 @@ export class ProjectComponent {
       next: (p) => {
         this.projectName.set(p.name);
         this.projectDescription.set(p.description ?? '');
-        const openalex = p.providers?.find((pr) => pr.name === 'openalex');
-        this.openAlexEmail.set(openalex?.options?.['email'] ?? '');
-        this.researchers.set(p.researchers.map((r) => ({ ...r, originalId: r.id })));
+        this.researchers.set(p.researchers.map((r) => ({ ...r, originalEmail: r.email })));
         this.criteria.set(p.criteria.map((c) => ({ ...c, originalId: c.id })));
       },
       error: (e) => {
@@ -88,12 +92,10 @@ export class ProjectComponent {
     this.saved.set(null);
     const name = this.projectName().trim();
     if (!name) { this.error.set('Project name is required.'); return; }
-    this.api.updateProjectInfo({ name, description: this.projectDescription() || null, openalex_email: this.openAlexEmail() || null }).subscribe({
+    this.api.updateProjectInfo({ name, description: this.projectDescription() || null }).subscribe({
       next: (p) => {
         this.projectName.set(p.name);
         this.projectDescription.set(p.description ?? '');
-        const openalex = p.providers?.find((pr) => pr.name === 'openalex');
-        this.openAlexEmail.set(openalex?.options?.['email'] ?? '');
         this.projectSvc.project.set(p);
         document.title = `Snow - ${p.name}`;
         this.saved.set('Project info saved.');
@@ -151,7 +153,7 @@ export class ProjectComponent {
   addResearcher(): void {
     this.researchers.update((list) => [
       ...list,
-      { id: '', name: '', email: '', originalId: '' },
+      { email: '', name: '', originalEmail: '' },
     ]);
   }
 
@@ -163,24 +165,22 @@ export class ProjectComponent {
     this.error.set(null);
     this.saved.set(null);
     const rows = this.researchers().map((r) => ({
-      id: this.normalizeId(r.id),
+      email: r.email.trim().toLowerCase(),
       name: r.name.trim(),
-      email: r.email?.trim() || null,
-      originalId: r.originalId,
+      originalEmail: r.originalEmail,
     }));
-    if (rows.some((r) => !r.id || !r.name)) {
-      this.error.set('Each researcher needs an id (letters/digits only) and a name.');
+    if (rows.some((r) => !r.email || !r.name)) {
+      this.error.set('Each researcher needs an email and a name.');
       return;
     }
     const payload: ResearcherInput[] = rows.map((r) => ({
-      id: r.id,
-      name: r.name,
       email: r.email,
-      ...(r.originalId && r.originalId !== r.id ? { previous_id: r.originalId } : {}),
+      name: r.name,
+      ...(r.originalEmail && r.originalEmail !== r.email ? { previous_email: r.originalEmail } : {}),
     }));
     this.api.replaceResearchers(payload).subscribe({
       next: (saved) => {
-        this.researchers.set(saved.map((r) => ({ ...r, originalId: r.id })));
+        this.researchers.set(saved.map((r) => ({ ...r, originalEmail: r.email })));
         this.saved.set('Researchers saved.');
       },
       error: (e) => this.error.set(`Failed to save researchers: ${this.errorMessage(e)}`),

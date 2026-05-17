@@ -14,16 +14,23 @@ class DescribeGetProvider:
         project = Project(name="empty")
         assert isinstance(get_provider(project), OpenAlexProvider)
 
+    def it_uses_researcher_email_for_openalex(self):
+        project = Project(name="p")
+        provider = get_provider(project, email="me@example.com")
+        assert isinstance(provider, OpenAlexProvider)
+        assert provider._email == "me@example.com"
+
     def it_skips_disabled_providers(self):
         project = Project(
             name="p",
             providers=[
                 ProviderConfig(name="scholarly", enabled=False),
-                ProviderConfig(name="openalex", enabled=True, options={"email": "me@example.com"}),
+                ProviderConfig(name="openalex", enabled=True),
             ],
         )
-        provider = get_provider(project)
+        provider = get_provider(project, email="me@example.com")
         assert isinstance(provider, OpenAlexProvider)
+        assert provider._email == "me@example.com"
 
     def it_picks_first_enabled_provider(self):
         project = Project(

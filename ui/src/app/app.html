@@ -12,7 +12,7 @@
         (ngModelChange)="onResearcherChange($event)"
       >
         <option [ngValue]="null">— select —</option>
-        <option *ngFor="let r of project()?.researchers" [ngValue]="r.id">{{ r.name }}</option>
+        <option *ngFor="let r of project()?.researchers" [ngValue]="r.email">{{ r.name }}</option>
       </select>
     </div>
   </div>

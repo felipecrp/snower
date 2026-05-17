@@ -52,8 +52,8 @@ def get_active_researcher(
         raise HTTPException(401, "Missing X-Researcher-Id header")
     if state.repo is None:
         raise HTTPException(409, "No project open")
-    project = state.repo.load_project()
-    for r in project.researchers:
-        if r.id == x_researcher_id:
+    researchers = state.repo.list_researchers()
+    for r in researchers:
+        if r.email == x_researcher_id:
             return r
-    raise HTTPException(403, f"Unknown researcher id: {x_researcher_id}")
+    raise HTTPException(403, f"Unknown researcher: {x_researcher_id}")

@@ -18,10 +18,9 @@ router = APIRouter(prefix="/api/project", tags=["project"])
 
 
 class ResearcherInput(BaseModel):
-    id: str
+    email: str
     name: str
-    email: str | None = None
-    previous_id: str | None = None
+    previous_email: str | None = None
 
 
 class CriterionInput(BaseModel):
@@ -34,7 +33,6 @@ class CriterionInput(BaseModel):
 class ProjectInfoInput(BaseModel):
     name: str
     description: str | None = None
-    openalex_email: str | None = None
 
 
 @router.get("", response_model=Project)
@@ -50,12 +48,6 @@ def update_project_info(
     project = repo.load_project()
     project.name = body.name.strip()
     project.description = body.description
-    # Update OpenAlex provider config
-    from snow.domain.models import ProviderConfig
-    other_providers = [p for p in project.providers if p.name != "openalex"]
-    if body.openalex_email:
-        other_providers.append(ProviderConfig(name="openalex", options={"email": body.openalex_email}))
-    project.providers = other_providers
     repo.save_project(project)
     return project
 
@@ -65,29 +57,29 @@ def replace_researchers(
     items: list[ResearcherInput],
     repo: ProjectRepo = Depends(get_repo),
 ) -> list[Researcher]:
-    new_ids = [r.id for r in items]
-    if len(set(new_ids)) != len(new_ids):
-        raise HTTPException(400, "Researcher ids must be unique")
+    new_emails = [r.email.strip().lower() for r in items]
+    if len(set(new_emails)) != len(new_emails):
+        raise HTTPException(400, "Researcher emails must be unique")
 
-    project = repo.load_project()
-    existing_ids = {r.id for r in project.researchers}
-    renames = _collect_renames(items, existing_ids)
+    existing = repo.list_researchers()
+    existing_emails = {r.email for r in existing}
+    renames = _collect_renames(items, existing_emails)
 
-    # IDs that are gone (not renamed, truly removed)
-    renamed_old_ids = set(renames.keys())
-    kept_ids = {r.id for r in items} | renamed_old_ids
-    removed_ids = existing_ids - kept_ids
-
-    project.researchers = [
-        Researcher(id=r.id, name=r.name, email=r.email) for r in items
-    ]
-    repo.save_project(project)
+    renamed_old_emails = set(renames.keys())
+    kept_emails = set(new_emails) | renamed_old_emails
+    removed_emails = existing_emails - kept_emails
 
     if renames:
         _rewrite_researcher_refs(repo, renames)
-    if removed_ids:
-        _delete_researcher_decisions(repo, removed_ids)
-    return project.researchers
+    if removed_emails:
+        _delete_researcher_decisions(repo, removed_emails)
+        for email in removed_emails:
+            repo.delete_researcher(email)
+
+    for item in items:
+        repo.save_researcher(Researcher(email=item.email, name=item.name))
+
+    return repo.list_researchers()
 
 
 @router.put("/criteria", response_model=list[Criterion])
@@ -117,26 +109,28 @@ def _collect_renames(
     items: list[ResearcherInput] | list[CriterionInput],
     existing_ids: set[str],
 ) -> dict[str, str]:
-    """Map of {previous_id -> new_id}. Validates that previous_ids existed."""
+    """Map of {previous_id/previous_email -> new_id/email}."""
     renames: dict[str, str] = {}
     for item in items:
-        if item.previous_id and item.previous_id != item.id:
-            if item.previous_id not in existing_ids:
+        prev = getattr(item, "previous_email", None) or getattr(item, "previous_id", None)
+        new = getattr(item, "email", None) or getattr(item, "id", None)
+        if prev and prev != new:
+            if prev not in existing_ids:
                 raise HTTPException(
-                    400, f"previous_id {item.previous_id!r} not found in current list"
+                    400, f"previous value {prev!r} not found in current list"
                 )
-            if item.previous_id in renames:
+            if prev in renames:
                 raise HTTPException(
-                    400, f"previous_id {item.previous_id!r} referenced more than once"
+                    400, f"previous value {prev!r} referenced more than once"
                 )
-            renames[item.previous_id] = item.id
+            renames[prev] = new
     return renames
 
 
-def _delete_researcher_decisions(repo: ProjectRepo, removed_ids: set[str]) -> None:
+def _delete_researcher_decisions(repo: ProjectRepo, removed_emails: set[str]) -> None:
     for set_id in repo.list_set_ids():
         decisions, resolutions = repo.load_decisions(set_id)
-        filtered = [d for d in decisions if d.researcher_id not in removed_ids]
+        filtered = [d for d in decisions if d.researcher_id not in removed_emails]
         if len(filtered) != len(decisions):
             repo.save_decisions(set_id, filtered, resolutions)
 

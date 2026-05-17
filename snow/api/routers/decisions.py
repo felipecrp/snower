@@ -48,7 +48,7 @@ def upsert_decision(
     _ensure_set_exists(repo, set_id)
     new_decision = Decision(
         bib_key=bib_key,
-        researcher_id=researcher.id,
+        researcher_id=researcher.email,
         verdict=body.verdict,
         criterion_id=body.criterion_id,
         note=body.note,
@@ -66,4 +66,4 @@ def delete_decision(
     researcher: Researcher = Depends(get_active_researcher),
 ) -> None:
     _ensure_set_exists(repo, set_id)
-    repo.delete_researcher_decision(set_id, bib_key, researcher.id)
+    repo.delete_researcher_decision(set_id, bib_key, researcher.email)

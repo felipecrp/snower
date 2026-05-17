@@ -59,7 +59,7 @@ def project() -> Project:
     return Project(
         name="demo",
         description="snowballing demo",
-        researchers=[Researcher(id="r1", name="Alice", email="alice@example.com")],
+        researchers=[Researcher(email="alice@example.com", name="Alice")],
         criteria=[Criterion(id="c1", kind=CriterionKind.INCLUDE, description="empirical study")],
     )
 

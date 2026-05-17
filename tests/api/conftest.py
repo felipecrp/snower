@@ -11,6 +11,7 @@ from snow.domain.models import (
     Researcher,
     Work,
 )
+
 from snow.storage.repo import ProjectRepo
 
 
@@ -21,16 +22,14 @@ def project_dir(tmp_path: Path) -> Path:
     repo.init(
         Project(
             name="demo",
-            researchers=[
-                Researcher(id="alice", name="Alice"),
-                Researcher(id="bob", name="Bob"),
-            ],
             criteria=[
                 Criterion(id="inc1", kind=CriterionKind.INCLUDE, description="empirical"),
                 Criterion(id="exc1", kind=CriterionKind.EXCLUDE, description="off-topic"),
             ],
         )
     )
+    repo.save_researcher(Researcher(email="alice@example.com", name="Alice"))
+    repo.save_researcher(Researcher(email="bob@example.com", name="Bob"))
     repo.import_start_set(
         [
             Work(bib_key="", title="Systematic literature review", authors=["Alpha, Aaron"], year=2020, doi="10/alpha"),
@@ -47,4 +46,4 @@ def client(project_dir: Path) -> TestClient:
 
 @pytest.fixture
 def alice_headers() -> dict[str, str]:
-    return {"X-Researcher-Id": "alice"}
+    return {"X-Researcher-Id": "alice@example.com"}
