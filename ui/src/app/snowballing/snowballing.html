@@ -78,62 +78,62 @@
     <div class="error" *ngIf="error() as err">{{ err }}</div>
 
     <ng-container *ngIf="currentSet() as cs">
-      <div class="filters">
-        <label class="phase-control" for="active-phase" *ngIf="phases().length">
-          phase
-          <select id="active-phase" [ngModel]="activePhase()" (ngModelChange)="activePhase.set($event); releaseFilterFocus()">
-            <option *ngFor="let p of phases()" [value]="p.id">{{ p.id }}: {{ p.description }}</option>
-          </select>
-        </label>
-        <label class="sort-control" for="sort-field">
-          sort by
-          <select id="sort-field" [ngModel]="sortField()" (ngModelChange)="sortField.set($event); releaseFilterFocus()">
-            <option value="author">author</option>
-            <option value="title">title</option>
-            <option value="venue">journal/conference</option>
-            <option value="criterion">criterion</option>
-          </select>
-        </label>
-        <div class="visibility-filters" aria-label="Visibility filters">
-          <span>show</span>
-          <label>
-            <input
-              type="checkbox"
-              [checked]="showSelected()"
-              (change)="showSelected.set($any($event.target).checked); visibilityMode.set('custom'); releaseFilterFocus()"
-            />
-            accepted
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              [checked]="showRejected()"
-              (change)="showRejected.set($any($event.target).checked); visibilityMode.set('custom'); releaseFilterFocus()"
-            />
-            rejected
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              [checked]="showPending()"
-              (change)="showPending.set($any($event.target).checked); visibilityMode.set('custom'); releaseFilterFocus()"
-            />
-            undecided
-          </label>
-          <label class="consensus-toggle">
-            <input type="checkbox" [checked]="resultsMode()" (change)="resultsMode.set($any($event.target).checked); releaseFilterFocus()" />
-            final result
-          </label>
-        </div>
-        <span class="counts" *ngIf="triageCounts() as counts">
-          <strong>{{ counts.selected }}</strong> selected
-          <strong>{{ counts.rejected }}</strong> rejected
-          <strong>{{ counts.total }}</strong> total
-          <span>{{ counts.shown }} shown</span>
-        </span>
-      </div>
-
       <div class="works">
+        <div class="filters">
+          <label class="phase-control" for="active-phase" *ngIf="phases().length">
+            phase
+            <select id="active-phase" [ngModel]="activePhase()" (ngModelChange)="activePhase.set($event); releaseFilterFocus()">
+              <option *ngFor="let p of phases()" [value]="p.id">{{ p.id }}: {{ p.description }}</option>
+            </select>
+          </label>
+          <label class="sort-control" for="sort-field">
+            sort by
+            <select id="sort-field" [ngModel]="sortField()" (ngModelChange)="sortField.set($event); releaseFilterFocus()">
+              <option value="author">author</option>
+              <option value="title">title</option>
+              <option value="venue">journal/conference</option>
+              <option value="criterion">criterion</option>
+            </select>
+          </label>
+          <div class="visibility-filters" aria-label="Visibility filters">
+            <span>show</span>
+            <label>
+              <input
+                type="checkbox"
+                [checked]="showSelected()"
+                (change)="showSelected.set($any($event.target).checked); visibilityMode.set('custom'); releaseFilterFocus()"
+              />
+              accepted
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                [checked]="showRejected()"
+                (change)="showRejected.set($any($event.target).checked); visibilityMode.set('custom'); releaseFilterFocus()"
+              />
+              rejected
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                [checked]="showPending()"
+                (change)="showPending.set($any($event.target).checked); visibilityMode.set('custom'); releaseFilterFocus()"
+              />
+              undecided
+            </label>
+            <label class="consensus-toggle">
+              <input type="checkbox" [checked]="resultsMode()" (change)="resultsMode.set($any($event.target).checked); releaseFilterFocus()" />
+              final result
+            </label>
+          </div>
+          <span class="counts" *ngIf="triageCounts() as counts">
+            <strong>{{ counts.selected }}</strong> selected
+            <strong>{{ counts.rejected }}</strong> rejected
+            <strong>{{ counts.total }}</strong> total
+            <span>{{ counts.shown }} shown</span>
+          </span>
+        </div>
+
         <article
           *ngFor="let w of filteredWorks(); trackBy: trackByBibKey"
           class="work"
@@ -240,7 +240,7 @@
               <ng-container *ngIf="activeResearcherId(); else needResearcher">
                 <select
                   [ngModel]="decisionFor(w.bib_key)?.criterion_id ?? null"
-                  (ngModelChange)="onCriterionChange(w, $event)"
+                  (ngModelChange)="onCriterionChange(w, $event); releaseFilterFocus()"
                 >
                   <option [ngValue]="null">— no decision —</option>
                   <optgroup label="Include (accept)">
@@ -266,6 +266,7 @@
                   [ngModel]="noteFor(w.bib_key)"
                   (ngModelChange)="updateNoteDraft(w.bib_key, $event)"
                   (blur)="saveNote(w)"
+                  (keydown.escape)="blurAndSaveNote($event, w); $event.preventDefault()"
                   [disabled]="!decisionFor(w.bib_key)"
                 />
               </ng-container>

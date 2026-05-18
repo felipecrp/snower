@@ -140,6 +140,7 @@ export class SnowballingComponent {
   private static readonly SORT_FIELD_KEY = 'snow:sort-field';
   private static readonly ACTIVE_PHASE_KEY = 'snow:active-phase';
   private setAutoSelected = false;
+  private lastFilteredWorkIds: string[] = [];
 
   constructor() {
     this.loadFilterPreferences();
@@ -181,20 +182,47 @@ export class SnowballingComponent {
       }
     });
 
-    // When filters/sort change, keep selected paper visible; if filtered out, pick next.
+    // When filters/sort change, keep selected paper visible; if filtered out, pick previous
+    // from the last visible list, else the next visible one from that same list order.
     effect(() => {
       const works = this.filteredWorks();
       const currentId = untracked(() => this.selectedWorkId());
-      if (!currentId || !works.length) return;
-      if (works.some((w) => w.bib_key === currentId)) return;
-      const allWorks = untracked(() => this.currentSet()?.works ?? []);
-      const originalIdx = allWorks.findIndex((w) => w.bib_key === currentId);
-      const next =
-        [...works].reverse().find((w) => allWorks.findIndex((aw) => aw.bib_key === w.bib_key) < originalIdx) ??
-        works.find((w) => allWorks.findIndex((aw) => aw.bib_key === w.bib_key) > originalIdx) ??
-        works[works.length - 1];
-      this.selectedWorkId.set(next.bib_key);
-      setTimeout(() => this.scrollToWork(next.bib_key));
+      const visibleIds = works.map((w) => w.bib_key);
+      const previousVisibleIds = untracked(() => this.lastFilteredWorkIds);
+
+      if (!currentId || !works.length) {
+        this.lastFilteredWorkIds = visibleIds;
+        return;
+      }
+      if (visibleIds.includes(currentId)) {
+        this.lastFilteredWorkIds = visibleIds;
+        return;
+      }
+
+      const previousIndex = previousVisibleIds.indexOf(currentId);
+      let nextId: string | undefined;
+
+      if (previousIndex >= 0) {
+        for (let i = previousIndex - 1; i >= 0; i -= 1) {
+          if (visibleIds.includes(previousVisibleIds[i])) {
+            nextId = previousVisibleIds[i];
+            break;
+          }
+        }
+        if (!nextId) {
+          for (let i = previousIndex + 1; i < previousVisibleIds.length; i += 1) {
+            if (visibleIds.includes(previousVisibleIds[i])) {
+              nextId = previousVisibleIds[i];
+              break;
+            }
+          }
+        }
+      }
+
+      const fallbackId = nextId ?? visibleIds[0];
+      this.selectedWorkId.set(fallbackId);
+      this.lastFilteredWorkIds = visibleIds;
+      setTimeout(() => this.scrollToWork(fallbackId));
     });
   }
 
@@ -311,9 +339,12 @@ export class SnowballingComponent {
     } else if (event.key === 'a') {
       event.preventDefault();
       this.openCriterionDialog('accept');
-    } else if (event.key === 'r') {
+    } else if (event.key === 'r' || event.key === 'c') {
       event.preventDefault();
       this.openCriterionDialog('reject');
+    } else if (event.key === 'u') {
+      event.preventDefault();
+      this.clearSelectedDecision();
     } else if (event.key === 'f') {
       event.preventDefault();
       this.pendingKeys = 'f';
@@ -750,6 +781,13 @@ export class SnowballingComponent {
     this.putDecision(set.id, work.bib_key, body, me);
   }
 
+  blurAndSaveNote(event: Event, work: Work): void {
+    this.saveNote(work);
+    if (event.target instanceof HTMLElement) {
+      event.target.blur();
+    }
+  }
+
   private putDecision(
     setId: string,
     bibId: string,
@@ -819,6 +857,12 @@ export class SnowballingComponent {
       const { [workId]: _, ...rest } = d;
       return rest;
     });
+  }
+
+  private clearSelectedDecision(): void {
+    const work = this.selectedWork();
+    if (!work) return;
+    this.onCriterionChange(work, null);
   }
 
   private findCriterion(id: string): Criterion | undefined {
