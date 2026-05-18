@@ -325,7 +325,22 @@ export class SnowballingComponent {
       else if (event.key === 'r') this.showRejected.update((v) => !v);
       else if (event.key === 'f') this.resultsMode.update((v) => !v);
       else if (event.key === 's') this.cycleSortField();
-      else if (event.key === 'b') this.toggleSelectedWorkDetails();
+      return;
+    }
+
+    if (this.pendingKeys === 'v') {
+      this.pendingKeys = '';
+      event.preventDefault();
+      if (event.key === 'v') this.toggleSelectedWorkDetails();
+      return;
+    }
+
+    if (this.pendingKeys === 'b') {
+      this.pendingKeys = '';
+      event.preventDefault();
+      if (event.key === 'b') this.bidSelected();
+      else if (event.key === 'u') this.unbidSelected();
+      else if (event.key === 'a') this.runBidding();
       return;
     }
 
@@ -345,6 +360,18 @@ export class SnowballingComponent {
         event.preventDefault();
         return;
       }
+      if (event.key === 's') {
+        this.pendingKeys = '';
+        event.preventDefault();
+        this.runSnowballingBoth('selected');
+        return;
+      }
+      if (event.key === 'a') {
+        this.pendingKeys = '';
+        event.preventDefault();
+        this.runSnowballingBoth('remaining');
+        return;
+      }
       this.pendingKeys = '';
     }
 
@@ -357,7 +384,7 @@ export class SnowballingComponent {
     } else if (event.key === 'a') {
       event.preventDefault();
       this.openCriterionDialog('accept');
-    } else if (event.key === 'r' || event.key === 'c') {
+    } else if (event.key === 'r') {
       event.preventDefault();
       this.openCriterionDialog('reject');
     } else if (event.key === 'u') {
@@ -369,6 +396,12 @@ export class SnowballingComponent {
     } else if (event.key === 's') {
       event.preventDefault();
       this.pendingKeys = 's';
+    } else if (event.key === 'b') {
+      event.preventDefault();
+      this.pendingKeys = 'b';
+    } else if (event.key === 'v') {
+      event.preventDefault();
+      this.pendingKeys = 'v';
     }
   }
 
@@ -456,6 +489,53 @@ export class SnowballingComponent {
     };
     this.rememberCriterion(body.verdict, criterion.id);
     this.putDecision(set.id, work.bib_key, body, me, this.fallbackSelectionAfter(work.bib_key));
+  }
+
+  private bidSelected(): void {
+    const work = this.selectedWork();
+    if (!work) {
+      this.error.set('Select a paper first.');
+      return;
+    }
+    const event = new Event('toggle-bid');
+    this.toggleBid(event, work);
+  }
+
+  private unbidSelected(): void {
+    const work = this.selectedWork();
+    if (!work) {
+      this.error.set('Select a paper first.');
+      return;
+    }
+    const me = this.activeResearcherId();
+    if (!me) {
+      this.error.set('Select an active researcher first.');
+      return;
+    }
+    const set = this.currentSet();
+    if (!set) return;
+    if (!this.isBidded(work.bib_key)) {
+      this.error.set('Paper is not bidded.');
+      return;
+    }
+    this.api.removeBid(set.id, work.bib_key).subscribe({
+      next: (updated) => {
+        this.biddings.update((all) => {
+          const without = all.filter((b) => b.researcher_id !== me);
+          return [...without, updated];
+        });
+      },
+      error: (e) => this.error.set(`Failed to remove bid: ${e.message}`),
+    });
+  }
+
+  private runSnowballingBoth(kind: 'selected' | 'remaining'): void {
+    const selectedKind = kind === 'selected' ? 'backward-selected' : 'backward-remaining';
+    this.runSnowballing(selectedKind as any);
+    setTimeout(() => {
+      const forwardKind = kind === 'selected' ? 'forward-selected' : 'forward-remaining';
+      this.runSnowballing(forwardKind as any);
+    }, 100);
   }
 
   runSnowballing(kind: 'both-remaining' | 'backward-remaining' | 'forward-remaining' | 'backward-selected' | 'forward-selected'): void {
