@@ -13,6 +13,10 @@ ipcMain.handle('pick-directory', async (_event, options = {}) => {
   return result.filePaths[0];
 });
 
+ipcMain.on('open-external', (_event, url) => {
+  shell.openExternal(url);
+});
+
 function createWindow() {
   const win = new BrowserWindow({
     title: 'Snow',
