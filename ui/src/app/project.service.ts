@@ -1,10 +1,8 @@
 import { Injectable, inject, signal } from '@angular/core';
 
 import { ApiService } from './api.service';
-import { Decision, Project, ReviewSet, WorkspaceInfo } from './models';
+import { Decision, Project, RecentProject, ReviewSet, WorkspaceInfo } from './models';
 import { ResearcherService } from './researcher.service';
-
-const LAST_PROJECT_KEY = 'snow:last-project';
 
 type RawDecision = Decision & { bib_key?: string; work_id?: string };
 
@@ -20,6 +18,26 @@ export class ProjectService {
   readonly pendingSetIds = signal<ReadonlySet<string>>(new Set());
   readonly workspace = signal<WorkspaceInfo | null>(null);
   readonly workspaceLoaded = signal(false);
+  readonly recents = signal<RecentProject[]>([]);
+
+  loadRecentProjects(): void {
+    this.api.getRecentProjects().subscribe({
+      next: (recents) => this.recents.set(recents),
+      error: () => this.recents.set([]),
+    });
+  }
+
+  rememberProject(entry: RecentProject): void {
+    this.api.putRecentProject(entry).subscribe({
+      next: (recents) => this.recents.set(recents),
+    });
+  }
+
+  removeRecentProject(path: string): void {
+    this.api.deleteRecentProject(path).subscribe({
+      next: (recents) => this.recents.set(recents),
+    });
+  }
 
   markSetsPending(ids: Iterable<string>): void {
     this.pendingSetIds.update((current) => {
@@ -46,18 +64,11 @@ export class ProjectService {
   }
 
   bootstrapWorkspace(): void {
+    this.loadRecentProjects();
     this.api.getWorkspace().subscribe({
       next: (w) => {
         if (w) {
           this.applyWorkspace(w);
-          return;
-        }
-        const lastPath = this.lastProjectPath();
-        if (lastPath) {
-          this.api.openProject(lastPath).subscribe({
-            next: (opened) => this.applyWorkspace(opened),
-            error: () => this.finishBootstrap(null),
-          });
         } else {
           this.finishBootstrap(null);
         }
@@ -70,7 +81,7 @@ export class ProjectService {
   }
 
   applyWorkspace(w: WorkspaceInfo): void {
-    this.rememberProjectPath(w.path);
+    this.rememberProject({ path: w.path, name: w.name });
     this.finishBootstrap(w);
     this.refresh(w.researcher_email);
   }
@@ -97,19 +108,6 @@ export class ProjectService {
   }
 
   private handleProjectError(error: any): void {
-    if (error.status === 409) {
-      const lastPath = this.lastProjectPath();
-      if (lastPath) {
-        this.api.openProject(lastPath).subscribe({
-          next: (opened) => {
-            this.applyWorkspace(opened);
-            this.refresh();
-          },
-          error: () => this.error.set('Backend restarted and last project is unavailable'),
-        });
-        return;
-      }
-    }
     this.error.set(`Failed to load project: ${error.message}`);
   }
 
@@ -118,21 +116,6 @@ export class ProjectService {
     this.workspaceLoaded.set(true);
   }
 
-  private lastProjectPath(): string | null {
-    try {
-      return localStorage.getItem(LAST_PROJECT_KEY);
-    } catch {
-      return null;
-    }
-  }
-
-  private rememberProjectPath(path: string): void {
-    try {
-      localStorage.setItem(LAST_PROJECT_KEY, path);
-    } catch {
-      // Ignore storage errors (private mode, quota, etc.)
-    }
-  }
 
   loadDecisionsForSet(setId: string): void {
     this.api.getDecisions(setId).subscribe({

@@ -1,6 +1,11 @@
 const path = require('path');
 const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 
+if (process.env.SNOW_USER_DATA_DIR) {
+  app.setPath('userData', process.env.SNOW_USER_DATA_DIR);
+  app.setPath('sessionData', path.join(process.env.SNOW_USER_DATA_DIR, 'session'));
+}
+
 const TARGET_URL = process.env.SNOW_UI_URL || 'http://localhost:4200';
 
 ipcMain.handle('pick-directory', async (_event, options = {}) => {

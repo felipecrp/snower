@@ -123,6 +123,12 @@ export interface WorkspaceInfo {
   researcher_email?: string | null;
 }
 
+export interface RecentProject {
+  path: string;
+  name: string;
+  description?: string | null;
+}
+
 export interface ProjectInfoInput {
   name: string;
   description?: string | null;

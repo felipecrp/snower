@@ -3,7 +3,7 @@
     <strong>Snow</strong>
     <span class="project" *ngIf="project() as p">— {{ p.description || p.name }}</span>
   </div>
-  <div class="topbar-right">
+  <div class="topbar-right" *ngIf="projectSvc.workspace()">
     <div class="researcher">
       <label for="researcher-select">Researcher:</label>
       <select
@@ -22,7 +22,7 @@
   <router-outlet />
 </div>
 
-<nav class="tab-bar">
+<nav class="tab-bar" *ngIf="projectSvc.workspace()">
   <a routerLink="/project" routerLinkActive="active" class="tab-link">
     <span class="tab-icon">⚙</span>
     <span class="tab-label">Project</span>

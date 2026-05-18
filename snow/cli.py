@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import socket
 import sys
 from pathlib import Path
 
@@ -88,7 +89,7 @@ def serve(
 ) -> None:
     """Start the local FastAPI server. With no --project the UI shows the
     workspace dialog and the user picks one (the frontend remembers the last
-    used project in localStorage)."""
+    used project in localStorage). Use --port 0 to bind to an OS-assigned free port."""
     if project is not None and not (project / "project.yml").exists():
         typer.echo(f"No snow project at {project} — run `snow init` first.", err=True)
         raise typer.Exit(code=1)
@@ -108,6 +109,14 @@ def serve(
             err=True,
         )
         raise typer.Exit(code=1)
+
+    if port == 0:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind((host, 0))
+        port = sock.getsockname()[1]
+        sock.close()
+        typer.echo(f"Listening on http://{host}:{port}")
+
     _configure_logging(project)
     fastapi_app = create_app(project)
     uvicorn.run(fastapi_app, host=host, port=port, reload=reload)

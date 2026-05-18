@@ -15,6 +15,7 @@ import {
   PhaseInput,
   Project,
   ProjectInfoInput,
+  RecentProject,
   Researcher,
   ResearcherInput,
   ReviewSet,
@@ -154,6 +155,18 @@ export class ApiService {
 
   localPdfUrl(bib_key: string): string {
     return `/api/downloads/${encodeURIComponent(bib_key)}`;
+  }
+
+  getRecentProjects(): Observable<RecentProject[]> {
+    return this.http.get<RecentProject[]>('/api/recent-projects');
+  }
+
+  putRecentProject(entry: RecentProject): Observable<RecentProject[]> {
+    return this.http.put<RecentProject[]>('/api/recent-projects', entry);
+  }
+
+  deleteRecentProject(path: string): Observable<RecentProject[]> {
+    return this.http.delete<RecentProject[]>('/api/recent-projects', { body: { path } });
   }
 
   private researcherHeaders(): HttpHeaders {

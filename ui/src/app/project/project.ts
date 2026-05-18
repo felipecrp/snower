@@ -9,6 +9,7 @@ import {
   CriterionKind,
   Phase,
   PhaseInput,
+  RecentProject,
   Researcher,
   ResearcherInput,
   WorkspaceInfo,
@@ -42,7 +43,7 @@ const PROJECT_NAME_RE = /^[a-zA-Z0-9_@-]+$/;
 })
 export class ProjectComponent {
   private readonly api = inject(ApiService);
-  private readonly projectSvc = inject(ProjectService);
+  readonly projectSvc = inject(ProjectService);
   private readonly researcherSvc = inject(ResearcherService);
 
   readonly workspace = signal<WorkspaceInfo | null>(null);
@@ -81,6 +82,8 @@ export class ProjectComponent {
     return this.researchers().find((r) => r.email === email) ?? null;
   });
 
+  readonly hasWorkspace = computed(() => !!this.projectSvc.workspace());
+
   readonly dialog = signal<Dialog>(null);
   readonly dialogPath = signal('');
   readonly dialogName = signal('');
@@ -98,11 +101,6 @@ export class ProjectComponent {
 
   constructor() {
     this.refresh();
-    effect(() => {
-      if (this.projectSvc.workspaceLoaded() && !this.projectSvc.workspace() && !this.dialog()) {
-        this.openDialog('open');
-      }
-    });
   }
 
   refresh(): void {
@@ -120,6 +118,13 @@ export class ProjectComponent {
         this.researchers.set(this.sortResearcherRows(p.researchers.map((r) => ({ ...r, originalEmail: r.email, assignment_percentage: r.assignment_percentage ?? 100 }))));
         this.criteria.set(this.sortCriterionRows(p.criteria.map((c) => ({ ...c, originalId: c.id }))));
         this.phases.set(this.sortPhaseRows(p.phases.map((ph) => ({ ...ph, originalId: ph.id }))));
+        if (this.workspace()?.path) {
+          this.projectSvc.rememberProject({
+            path: this.workspace()!.path,
+            name: this.workspace()!.name,
+            description: p.description ?? undefined,
+          });
+        }
       },
       error: (e) => {
         if (e.status !== 409) this.error.set(`Failed to load project: ${e.message}`);
@@ -187,6 +192,26 @@ export class ProjectComponent {
       error: (e) => {
         this.dialogWorking.set(false);
         this.error.set(this.errorMessage(e));
+      },
+    });
+  }
+
+  openRecent(entry: RecentProject): void {
+    this.dialog.set(null);
+    this.dialogWorking.set(true);
+    this.error.set(null);
+
+    this.api.openProject(entry.path).subscribe({
+      next: (w) => {
+        this.dialogWorking.set(false);
+        this.workspace.set(w);
+        this.projectSvc.applyWorkspace(w);
+        this.refresh();
+      },
+      error: (e) => {
+        this.dialogWorking.set(false);
+        this.projectSvc.removeRecentProject(entry.path);
+        this.error.set(`Could not open project: ${this.errorMessage(e)}`);
       },
     });
   }

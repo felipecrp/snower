@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, OnInit, computed, inject } from '@angular/core';
+import { Component, HostListener, OnInit, computed, effect, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
@@ -24,6 +24,17 @@ export class App implements OnInit {
   readonly activeResearcherId = this.researcherSvc.activeId;
 
   readonly selectValue = computed(() => this.activeResearcherId());
+
+  constructor() {
+    effect(() => {
+      if (this.projectSvc.workspaceLoaded() && !this.projectSvc.workspace()) {
+        const current = this.router.url.split('?')[0].replace(/^\//, '');
+        if (current !== 'project') {
+          this.router.navigate(['/project']);
+        }
+      }
+    });
+  }
 
   ngOnInit(): void {
     this.projectSvc.bootstrapWorkspace();
