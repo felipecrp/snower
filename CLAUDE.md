@@ -2,6 +2,10 @@
 
 Snow is a local-first systematic literature review tool using the Wohlin snowballing method. All data is stored as BibTeX + YAML files, versionable with git. The server runs on `127.0.0.1`; no data leaves the machine.
 
+## Instructions
+
+-  Ask permission before spawning agents
+
 ## Stack
 
 - **Backend:** Python 3.13, FastAPI, Pydantic v2, bibtexparser 1.4.4, ruamel.yaml, scholarly, Typer/Uvicorn
