@@ -39,6 +39,7 @@ _ID_RE = re.compile(r"^[a-z0-9_]+$")
 class Researcher(BaseModel):
     email: str
     name: str
+    assignment_percentage: int = 100
 
     @field_validator("email", mode="before")
     @classmethod
@@ -89,6 +90,11 @@ class Project(BaseModel):
     criteria: list[Criterion] = Field(default_factory=list)
     phases: list[Phase] = Field(default_factory=list)
     providers: list[ProviderConfig] = Field(default_factory=list)
+
+
+class Bidding(BaseModel):
+    researcher_id: str
+    work_ids: list[str] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)

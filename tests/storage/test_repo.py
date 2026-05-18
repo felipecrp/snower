@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from snow.domain.models import (
+    Bidding,
     BibliographicWork,
     Criterion,
     CriterionKind,
@@ -714,3 +715,69 @@ class DescribeRunGlobalSnowballing:
 
         assert len(updated) == 1
         assert len(updated[0].works) == 1
+
+
+class Describe_bidding_storage:
+    def it_saves_and_loads_biddings(self, tmp_path: Path, project: Project, sample_works: list[Work]):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        repo.import_start_set(sample_works)
+        start = repo.load_set("00-start")
+        bk = start.works[0].bib_key
+
+        repo.save_bidding("00-start", Bidding(researcher_id="alice@example.com", work_ids=[bk]))
+        loaded = repo.load_biddings("00-start")
+
+        assert len(loaded) == 1
+        assert loaded[0].researcher_id == "alice@example.com"
+        assert bk in loaded[0].work_ids
+
+    def it_adds_and_removes_individual_works(self, tmp_path: Path, project: Project, sample_works: list[Work]):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        repo.import_start_set(sample_works)
+        start = repo.load_set("00-start")
+        bk = start.works[0].bib_key
+
+        after_add = repo.add_work_to_bidding("00-start", "alice@example.com", bk)
+        assert bk in after_add.work_ids
+
+        after_remove = repo.remove_work_from_bidding("00-start", "alice@example.com", bk)
+        assert bk not in after_remove.work_ids
+
+    def it_deletes_biddings_when_researcher_is_removed(self, tmp_path: Path, project: Project, sample_works: list[Work]):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        repo.save_researcher(Researcher(email="alice@example.com", name="Alice"))
+        repo.import_start_set(sample_works)
+        start = repo.load_set("00-start")
+        bk = start.works[0].bib_key
+
+        repo.add_work_to_bidding("00-start", "alice@example.com", bk)
+        assert repo.bidding_path("00-start", "alice@example.com").exists()
+
+        repo.delete_researcher_biddings("alice@example.com")
+        assert not repo.bidding_path("00-start", "alice@example.com").exists()
+
+    def it_renames_bidding_files_on_researcher_rename(self, tmp_path: Path, project: Project, sample_works: list[Work]):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        repo.save_researcher(Researcher(email="alice@example.com", name="Alice"))
+        repo.import_start_set(sample_works)
+        start = repo.load_set("00-start")
+        bk = start.works[0].bib_key
+
+        repo.add_work_to_bidding("00-start", "alice@example.com", bk)
+        repo.rename_researcher_biddings("alice@example.com", "new@example.com")
+
+        assert not repo.bidding_path("00-start", "alice@example.com").exists()
+        assert repo.bidding_path("00-start", "new@example.com").exists()
+        loaded = repo.load_biddings("00-start")
+        assert loaded[0].researcher_id == "new@example.com"
+
+    def it_persists_assignment_percentage_in_researcher_file(self, tmp_path: Path):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.researchers_dir().mkdir(parents=True, exist_ok=True)
+        repo.save_researcher(Researcher(email="bob@example.com", name="Bob", assignment_percentage=60))
+        loaded = repo.list_researchers()
+        assert loaded[0].assignment_percentage == 60

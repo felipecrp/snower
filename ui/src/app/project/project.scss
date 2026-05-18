@@ -188,9 +188,24 @@ table {
 }
 
 table.researchers-table {
-  th:nth-child(1), td:nth-child(1) { width: 45%; }
-  th:nth-child(2), td:nth-child(2) { width: 45%; }
-  th:nth-child(3), td:nth-child(3) { width: 80px; }
+  table-layout: auto;
+
+  // email: fixed hint; name col has no width so it takes all remaining space
+  th:nth-child(1), td:nth-child(1) { width: 30%; }
+
+  .bid-pct-col {
+    width: 1px;        // shrink-to-fit
+    white-space: nowrap;
+    text-align: right;
+
+    input { width: 4rem; text-align: right; }
+  }
+
+  .remove-col {
+    width: 1px;        // shrink-to-fit
+    white-space: nowrap;
+    text-align: right;
+  }
 }
 
 table.criteria-table {
@@ -217,6 +232,34 @@ table.criteria-table {
       color: white;
       border-color: #2563eb;
     }
+  }
+}
+
+.warning {
+  font-size: 0.85rem;
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.bidding-coverage {
+  font-size: 0.85rem;
+  color: #374151;
+  margin-bottom: 0.75rem;
+}
+
+.bidding-summary {
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+
+  ul {
+    margin: 0.4rem 0 0;
+    padding-left: 1.25rem;
+
+    li { margin-bottom: 0.25rem; }
   }
 }
 

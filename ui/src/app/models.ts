@@ -5,6 +5,7 @@ export type CriterionKind = 'include' | 'exclude';
 export interface Researcher {
   email: string;
   name: string;
+  assignment_percentage?: number;
 }
 
 export interface ResearcherInput extends Researcher {
@@ -102,6 +103,18 @@ export interface DecisionInput {
   criterion_id?: string | null;
   phase_id?: string | null;
   note?: string | null;
+}
+
+export interface Bidding {
+  researcher_id: string;
+  work_ids: string[];
+}
+
+export interface BiddingRunSummary {
+  set_id: string;
+  total_works: number;
+  per_researcher: Record<string, number>;
+  overlap_pct: number;
 }
 
 export interface WorkspaceInfo {

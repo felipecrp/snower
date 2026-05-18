@@ -24,6 +24,7 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 class ResearcherInput(BaseModel):
     email: str
     name: str
+    assignment_percentage: int = 100
     previous_email: str | None = None
 
 
@@ -74,6 +75,7 @@ def replace_researchers(
         ResearcherInput(
             email=r.email.strip().lower(),
             name=r.name.strip(),
+            assignment_percentage=max(0, min(100, r.assignment_percentage)),
             previous_email=r.previous_email.strip().lower() if r.previous_email else None,
         )
         for r in items
@@ -94,13 +96,16 @@ def replace_researchers(
 
     if renames:
         _rewrite_researcher_refs(repo, renames)
+        for old_email, new_email in renames.items():
+            repo.rename_researcher_biddings(old_email, new_email)
     if removed_emails:
         _delete_researcher_decisions(repo, removed_emails)
         for email in removed_emails:
+            repo.delete_researcher_biddings(email)
             repo.delete_researcher(email)
 
     for item in normalized:
-        repo.save_researcher(Researcher(email=item.email, name=item.name))
+        repo.save_researcher(Researcher(email=item.email, name=item.name, assignment_percentage=item.assignment_percentage))
 
     return _sort_researchers(repo.list_researchers())
 

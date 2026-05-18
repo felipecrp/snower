@@ -40,6 +40,9 @@
       <button class="import-btn" (click)="triggerBibImport()" [disabled]="importing()">
         {{ importing() ? 'Importing…' : 'Import start set' }}
       </button>
+      <button class="import-btn" (click)="runBidding()" [disabled]="biddingRunning()">
+        {{ biddingRunning() ? 'Running…' : 'Bidding' }}
+      </button>
       <div class="snowball-split">
         <div class="snowball-split-main">
           <button
@@ -126,6 +129,10 @@
               final result
             </label>
           </div>
+          <label class="assigned-toggle">
+            <input type="checkbox" [checked]="onlyAssigned()" (change)="onlyAssigned.set($any($event.target).checked); releaseFilterFocus()" />
+            assigned to me
+          </label>
           <span class="counts" *ngIf="triageCounts() as counts">
             <strong>{{ counts.selected }}</strong> selected
             <strong>{{ counts.rejected }}</strong> rejected
@@ -189,6 +196,7 @@
             </div>
           </header>
 
+
           <div class="snowball-counts"
                *ngIf="!isWorkExpanded(w.bib_key) && (w.last_backward_snowballed_at || w.last_forward_snowballed_at)">
             <span *ngIf="w.last_backward_snowballed_at" title="backward snowballing">
@@ -238,6 +246,13 @@
             </ng-container>
             <ng-template #triageMode>
               <ng-container *ngIf="activeResearcherId(); else needResearcher">
+                <button
+                  class="bid-btn"
+                  [class.bid-active]="isBidded(w.bib_key)"
+                  (click)="toggleBid($event, w)"
+                  [title]="isBidded(w.bib_key) ? 'Remove from my assignments' : 'Add to my assignments'"
+                  type="button"
+                >{{ isBidded(w.bib_key) ? '−' : '+' }}</button>
                 <select
                   [ngModel]="decisionFor(w.bib_key)?.criterion_id ?? null"
                   (ngModelChange)="onCriterionChange(w, $event); releaseFilterFocus()"
@@ -282,7 +297,11 @@
               title="Expand details (f b)"
               (click)="toggleWorkDetails(w.bib_key); $event.stopPropagation()"
             >
-              {{ isWorkExpanded(w.bib_key) ? '−' : '+' }}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="1"></circle>
+                <circle cx="19" cy="12" r="1"></circle>
+                <circle cx="5" cy="12" r="1"></circle>
+              </svg>
             </button>
           </footer>
         </article>

@@ -18,6 +18,7 @@ import { ResearcherService } from '../researcher.service';
 
 interface ResearcherRow extends Researcher {
   originalEmail: string;
+  assignment_percentage: number;
 }
 
 interface CriterionRow extends Criterion {
@@ -52,6 +53,28 @@ export class ProjectComponent {
   readonly phases = signal<PhaseRow[]>([]);
   readonly error = signal<string | null>(null);
   readonly saved = signal<string | null>(null);
+
+  readonly assignmentPercentageSum = computed(() =>
+    this.researchers().reduce((sum, r) => sum + (r.assignment_percentage ?? 100), 0),
+  );
+  readonly assignmentWarning = computed(() => {
+    const sum = this.assignmentPercentageSum();
+    return sum < 100 ? `Sum of bid percentages is ${sum}% — must be at least 100%.` : null;
+  });
+  readonly biddingCoverage = computed<Array<{ pct: number; n: number }>>(() => {
+    if (!this.researchers().length) return [];
+    const sum = this.assignmentPercentageSum();
+    if (sum < 100) return [];
+    const atLeast = (n: number) => Math.min(Math.max(0, sum - (n - 1) * 100), 100);
+    const result: Array<{ pct: number; n: number }> = [];
+    let n = 1;
+    while (atLeast(n) > 0) {
+      const pct = atLeast(n) - atLeast(n + 1);
+      if (pct > 0) result.push({ pct, n });
+      n++;
+    }
+    return result.reverse();
+  });
 
   readonly currentResearcher = computed(() => {
     const email = this.researcherSvc.activeId();
@@ -94,7 +117,7 @@ export class ProjectComponent {
       next: (p) => {
         this.projectName.set(p.name);
         this.projectDescription.set(p.description ?? '');
-        this.researchers.set(this.sortResearcherRows(p.researchers.map((r) => ({ ...r, originalEmail: r.email }))));
+        this.researchers.set(this.sortResearcherRows(p.researchers.map((r) => ({ ...r, originalEmail: r.email, assignment_percentage: r.assignment_percentage ?? 100 }))));
         this.criteria.set(this.sortCriterionRows(p.criteria.map((c) => ({ ...c, originalId: c.id }))));
         this.phases.set(this.sortPhaseRows(p.phases.map((ph) => ({ ...ph, originalId: ph.id }))));
       },
@@ -107,9 +130,7 @@ export class ProjectComponent {
   saveProjectInfo(): void {
     this.error.set(null);
     this.saved.set(null);
-    const name = this.projectName().trim();
-    if (!name) { this.error.set('Project name is required.'); return; }
-    this.api.updateProjectInfo({ name, description: this.projectDescription() || null }).subscribe({
+    this.api.updateProjectInfo({ name: this.projectName(), description: this.projectDescription() || null }).subscribe({
       next: (p) => {
         this.projectName.set(p.name);
         this.projectDescription.set(p.description ?? '');
@@ -191,7 +212,7 @@ export class ProjectComponent {
   addResearcher(): void {
     this.researchers.update((list) => [
       ...list,
-      { email: '', name: '', originalEmail: '' },
+      { email: '', name: '', assignment_percentage: 100, originalEmail: '' },
     ]);
   }
 
@@ -205,6 +226,7 @@ export class ProjectComponent {
     const rows = this.researchers().map((r) => ({
       email: r.email.trim().toLowerCase(),
       name: r.name.trim(),
+      assignment_percentage: r.assignment_percentage ?? 100,
       originalEmail: r.originalEmail,
     }));
     if (rows.some((r) => !r.email || !r.name)) {
@@ -218,6 +240,7 @@ export class ProjectComponent {
     const payload: ResearcherInput[] = rows.map((r) => ({
       email: r.email,
       name: r.name,
+      assignment_percentage: r.assignment_percentage,
       ...(r.originalEmail && r.originalEmail !== r.email ? { previous_email: r.originalEmail } : {}),
     }));
     const previousToNext = new Map(
@@ -228,7 +251,7 @@ export class ProjectComponent {
     this.api.replaceResearchers(payload).subscribe({
       next: (saved) => {
         const sorted = this.sortResearchers(saved);
-        this.researchers.set(sorted.map((r) => ({ ...r, originalEmail: r.email })));
+        this.researchers.set(sorted.map((r) => ({ ...r, originalEmail: r.email, assignment_percentage: r.assignment_percentage ?? 100 })));
         this.projectSvc.project.update((project) => project ? { ...project, researchers: sorted } : project);
         const active = this.researcherSvc.activeId();
         if (active) {

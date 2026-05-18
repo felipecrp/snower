@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 
 import { ApiService } from '../api.service';
 import {
+  Bidding,
   Criterion,
   Decision,
   DecisionInput,
@@ -47,6 +48,9 @@ export class SnowballingComponent {
   readonly snowballMenuOpen = signal(false);
   readonly inFlightSnowball = signal<ReadonlySet<string>>(new Set());
 
+  readonly biddings = signal<Bidding[]>([]);
+  readonly onlyAssigned = signal(false);
+  readonly biddingRunning = signal(false);
   readonly resultsMode = signal(false);
   readonly showPending = signal(true);
   readonly showSelected = signal(true);
@@ -64,14 +68,24 @@ export class SnowballingComponent {
 
   private pendingKeys = '';
 
+  readonly assignedToMe = computed<Set<string>>(() => {
+    const me = this.activeResearcherId();
+    if (!me) return new Set();
+    const bidding = this.biddings().find((b) => b.researcher_id === me);
+    return new Set(bidding?.work_ids ?? []);
+  });
+
   readonly filteredWorks = computed(() => {
     const set = this.currentSet();
     if (!set) return [];
     const showPend = this.showPending();
     const showSel = this.showSelected();
     const showRej = this.showRejected();
+    const onlyAssigned = this.onlyAssigned();
+    const assigned = this.assignedToMe();
     return this.sortWorks(
       set.works.filter((w) => {
+        if (onlyAssigned && !assigned.has(w.bib_key)) return false;
         const verdict = this.decisionFor(w.bib_key)?.verdict;
         if (!verdict) return showPend;
         if (verdict === 'accept') return showSel;
@@ -252,6 +266,10 @@ export class SnowballingComponent {
     this.selectedWorkId.set(null);
     this.currentSet.set(s);
     localStorage.setItem(SnowballingComponent.LAST_SET_KEY, s.id);
+    this.api.getBiddings(s.id).subscribe({
+      next: (b) => this.biddings.set(b),
+      error: () => this.biddings.set([]),
+    });
     this.api.getDecisions(s.id).subscribe({
       next: (r) => {
         this.decisions.set(r.decisions);
@@ -563,6 +581,65 @@ export class SnowballingComponent {
         });
       }
     }
+  }
+
+  isBidded(workId: string): boolean {
+    return this.assignedToMe().has(workId);
+  }
+
+  toggleBid(event: Event, work: Work): void {
+    event.stopPropagation();
+    const me = this.activeResearcherId();
+    if (!me) { this.error.set('Select an active researcher first.'); return; }
+    const set = this.currentSet();
+    if (!set) return;
+    const bidded = this.isBidded(work.bib_key);
+    const call$ = bidded
+      ? this.api.removeBid(set.id, work.bib_key)
+      : this.api.addBid(set.id, work.bib_key);
+    call$.subscribe({
+      next: (updated) => {
+        this.biddings.update((all) => {
+          const without = all.filter((b) => b.researcher_id !== me);
+          return [...without, updated];
+        });
+      },
+      error: (e) => this.error.set(`Failed to update bid: ${e.message}`),
+    });
+  }
+
+  assignedInitials(workId: string): string[] {
+    const project = this.project();
+    if (!project) return [];
+    const byEmail = new Map(project.researchers.map((r) => [r.email, r.name]));
+    return this.biddings()
+      .filter((b) => b.work_ids.includes(workId))
+      .map((b) => {
+        const name = byEmail.get(b.researcher_id) ?? b.researcher_id;
+        return name.split(/\s+/).map((w) => w[0]?.toUpperCase() ?? '').join('').slice(0, 2);
+      });
+  }
+
+  runBidding(): void {
+    this.error.set(null);
+    this.biddingRunning.set(true);
+    this.api.runBidding().subscribe({
+      next: () => {
+        this.biddingRunning.set(false);
+        this.error.set(null);
+        const setId = this.currentSet()?.id;
+        if (setId) {
+          this.api.getBiddings(setId).subscribe({
+            next: (b) => this.biddings.set(b),
+            error: () => this.biddings.set([]),
+          });
+        }
+      },
+      error: (e) => {
+        this.biddingRunning.set(false);
+        this.error.set(`Bidding failed: ${e.error?.detail ?? e.message}`);
+      },
+    });
   }
 
   triggerBibImport(): void {

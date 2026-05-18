@@ -3,6 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import {
+  Bidding,
+  BiddingRunSummary,
   Criterion,
   CriterionInput,
   Decision,
@@ -125,6 +127,29 @@ export class ApiService {
       `/api/sets/${setId}/decisions/${encodeURIComponent(workId)}`,
       { headers: this.researcherHeaders() },
     );
+  }
+
+  getBiddings(setId: string): Observable<Bidding[]> {
+    return this.http.get<Bidding[]>(`/api/sets/${setId}/bidding`);
+  }
+
+  addBid(setId: string, workId: string): Observable<Bidding> {
+    return this.http.put<Bidding>(
+      `/api/sets/${setId}/bidding/${encodeURIComponent(workId)}`,
+      {},
+      { headers: this.researcherHeaders() },
+    );
+  }
+
+  removeBid(setId: string, workId: string): Observable<Bidding> {
+    return this.http.delete<Bidding>(
+      `/api/sets/${setId}/bidding/${encodeURIComponent(workId)}`,
+      { headers: this.researcherHeaders() },
+    );
+  }
+
+  runBidding(): Observable<BiddingRunSummary[]> {
+    return this.http.post<BiddingRunSummary[]>('/api/bidding/run', {});
   }
 
   localPdfUrl(bib_key: string): string {

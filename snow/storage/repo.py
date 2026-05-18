@@ -40,6 +40,7 @@ from snow.domain.identity import (
     short_fingerprint,
 )
 from snow.domain.models import (
+    Bidding,
     BibliographicWork,
     Criterion,
     Decision,
@@ -68,6 +69,7 @@ DOWNLOADS_DIR = "downloads"
 RESEARCHERS_DIR = "researchers"
 RESOLUTIONS_FILE = "resolutions.yml"
 DECISIONS_PREFIX = "decisions_"
+BIDDING_PREFIX = "bidding_"
 
 _SET_DIR_PATTERN = re.compile(r"^(\d{2})-(start|backward|forward)$")
 _ORPHAN_DIR_PATTERN = re.compile(r"^orphan$")
@@ -160,12 +162,19 @@ class ProjectRepo:
         for path in sorted(rdir.glob("*.yml")):
             data = yml.load(path) or {}
             email = path.stem
-            researchers.append(Researcher(email=email, name=data.get("name", email)))
+            researchers.append(Researcher(
+                email=email,
+                name=data.get("name", email),
+                assignment_percentage=int(data.get("assignment_percentage", 100)),
+            ))
         return researchers
 
     def save_researcher(self, r: Researcher) -> None:
         self.researchers_dir().mkdir(parents=True, exist_ok=True)
-        yml.dump({"name": r.name}, self.researcher_path(r.email))
+        data: dict = {"name": r.name}
+        if r.assignment_percentage != 100:
+            data["assignment_percentage"] = r.assignment_percentage
+        yml.dump(data, self.researcher_path(r.email))
 
     def delete_researcher(self, email: str) -> None:
         path = self.researcher_path(email)
@@ -554,6 +563,58 @@ class ProjectRepo:
                 {"resolutions": [r.model_dump(mode="json", exclude_none=True) for r in resolutions]},
                 self._resolutions_path(set_id),
             )
+
+    # --- bidding --------------------------------------------------------
+
+    def bidding_path(self, set_id: str, researcher_id: str) -> Path:
+        return self.set_dir(set_id).root / f"{BIDDING_PREFIX}{researcher_id}.yml"
+
+    def load_biddings(self, set_id: str) -> list[Bidding]:
+        set_dir = self.set_dir(set_id).root
+        if not set_dir.exists():
+            return []
+        biddings: list[Bidding] = []
+        for f in sorted(set_dir.glob(f"{BIDDING_PREFIX}*.yml")):
+            researcher_id = f.stem[len(BIDDING_PREFIX):]
+            data = yml.load(f) or {}
+            biddings.append(Bidding(researcher_id=researcher_id, work_ids=list(data.get("work_ids") or [])))
+        return biddings
+
+    def save_bidding(self, set_id: str, bidding: Bidding) -> None:
+        path = self.bidding_path(set_id, bidding.researcher_id)
+        self.set_dir(set_id).root.mkdir(parents=True, exist_ok=True)
+        yml.dump({"work_ids": sorted(bidding.work_ids)}, path)
+
+    def add_work_to_bidding(self, set_id: str, researcher_id: str, work_id: str) -> Bidding:
+        path = self.bidding_path(set_id, researcher_id)
+        self.set_dir(set_id).root.mkdir(parents=True, exist_ok=True)
+        data = yml.load(path) or {}
+        work_ids: list[str] = list(data.get("work_ids") or [])
+        if work_id not in work_ids:
+            work_ids.append(work_id)
+        yml.dump({"work_ids": sorted(work_ids)}, path)
+        return Bidding(researcher_id=researcher_id, work_ids=work_ids)
+
+    def remove_work_from_bidding(self, set_id: str, researcher_id: str, work_id: str) -> Bidding:
+        path = self.bidding_path(set_id, researcher_id)
+        data = yml.load(path) or {}
+        work_ids = [w for w in (data.get("work_ids") or []) if w != work_id]
+        yml.dump({"work_ids": work_ids}, path)
+        return Bidding(researcher_id=researcher_id, work_ids=work_ids)
+
+    def delete_researcher_biddings(self, researcher_id: str) -> None:
+        for set_id in self.list_set_ids():
+            path = self.bidding_path(set_id, researcher_id)
+            if path.exists():
+                path.unlink()
+
+    def rename_researcher_biddings(self, old_id: str, new_id: str) -> None:
+        for set_id in self.list_set_ids():
+            old_path = self.bidding_path(set_id, old_id)
+            if old_path.exists():
+                data = yml.load(old_path) or {}
+                yml.dump(data, self.bidding_path(set_id, new_id))
+                old_path.unlink()
 
     # --- key registry ---------------------------------------------------
 
