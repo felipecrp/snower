@@ -275,6 +275,9 @@
                     {{ existing.verdict }}
                   </span>
                 </ng-container>
+                <span class="phase-label" *ngIf="getPhaseInfoForWork(w.bib_key) as phaseInfo">
+                  {{ phaseInfo.id }}: {{ phaseInfo.description }}
+                </span>
                 <input
                   type="text"
                   placeholder="note (optional)"
@@ -338,12 +341,15 @@
     />
     <input
       type="text"
-      placeholder="justification (optional)"
+      placeholder="remarks (optional)"
       [ngModel]="criterionNote()"
       (ngModelChange)="updateCriterionNote($event)"
       (keydown.enter)="confirmCriterionDialog(); $event.preventDefault()"
       (keydown.escape)="closeCriterionDialog(); $event.preventDefault()"
     />
+    <div class="phase-info" *ngIf="getActivePhaseInfo() as phaseInfo">
+      <span>Phase {{ phaseInfo.id }}: {{ phaseInfo.description }}</span>
+    </div>
     <ul>
       <li
         *ngFor="let c of dialogCriteria(); let i = index; trackBy: trackByCriterionId"

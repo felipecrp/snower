@@ -864,6 +864,18 @@ export class SnowballingComponent {
     this.highlightedCriterionIndex.set(0);
   }
 
+  getActivePhaseInfo(): Phase | null {
+    const phaseId = this.activePhase();
+    if (!phaseId) return null;
+    return this.phases().find((p) => p.id === phaseId) ?? null;
+  }
+
+  getPhaseInfoForWork(workId: string): Phase | null {
+    const decision = this.decisionFor(workId);
+    if (!decision?.phase_id) return null;
+    return this.phases().find((p) => p.id === decision.phase_id) ?? null;
+  }
+
   updateCriterionQuery(query: string): void {
     this.criterionQuery.set(query);
     this.highlightedCriterionIndex.set(0);

@@ -426,6 +426,15 @@
 
     input[type="text"] { flex: 1; min-width: 180px; }
 
+    .phase-label {
+      font-size: 0.85rem;
+      color: #6b7280;
+      white-space: nowrap;
+      background: #f3f4f6;
+      padding: 0.35rem 0.55rem;
+      border-radius: 6px;
+    }
+
     .bid-btn {
       flex: 0 0 auto;
       width: 28px;
@@ -522,5 +531,13 @@
 
     & + li { border-top: 1px solid #e5e7eb; }
     &.highlighted { background: #dbeafe; }
+  }
+
+  .phase-info {
+    font-size: 0.85rem;
+    color: #6b7280;
+    padding: 0.5rem 0.65rem;
+    background: #f3f4f6;
+    border-radius: 6px;
   }
 }
