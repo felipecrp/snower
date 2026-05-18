@@ -4,9 +4,11 @@ A project on disk looks like:
 
     <project>/
         project.yml
-        relations.yml
         keys.yml
         snowballing.yml
+        relations/
+            wohlin2014snowballing.yml  # one entry per paper in the citation graph
+            ...
         works/
             wohlin2014snowballing.bib    # one entry per file, shared across sets
             ...
@@ -56,7 +58,7 @@ from snow.storage import bib, yml
 logger = logging.getLogger(__name__)
 
 PROJECT_FILE = "project.yml"
-RELATIONS_FILE = "relations.yml"
+RELATIONS_DIR = "relations"
 KEYS_FILE = "keys.yml"
 SNOWBALLING_FILE = "snowballing.yml"
 SETS_DIR = "sets"
@@ -194,6 +196,12 @@ class ProjectRepo:
 
     def downloads_dir(self) -> Path:
         return self.root / DOWNLOADS_DIR
+
+    def relations_dir(self) -> Path:
+        return self.root / RELATIONS_DIR
+
+    def relation_path(self, bib_key: str) -> Path:
+        return self.relations_dir() / f"{bib_key}.yml"
 
     def pdf_path(self, bib_key: str) -> Path:
         return self.downloads_dir() / f"{bib_key}.pdf"
@@ -479,7 +487,7 @@ class ProjectRepo:
         self.save_snowball_log(log)
         if new_relations:
             self.save_relations(existing_relations + new_relations)
-            logger.info("%d new relation(s) saved to relations.yml", len(new_relations))
+            logger.info("%d new relation(s) saved to relations/", len(new_relations))
         return updated_sets
 
     # --- decisions ------------------------------------------------------
@@ -603,20 +611,20 @@ class ProjectRepo:
 
     # --- relations ------------------------------------------------------
 
-    def relations_path(self) -> Path:
-        return self.root / RELATIONS_FILE
-
     def load_relations(self) -> list[Relation]:
-        data = yml.load(self.relations_path()) or {}
         relations: list[Relation] = []
         seen: set[tuple[str, str]] = set()
-        for entry in data.get("relations") or []:
-            for bib_key, connections in entry.items():
-                for cited in connections.get("cite") or []:
-                    edge = (bib_key, cited)
-                    if edge not in seen:
-                        seen.add(edge)
-                        relations.append(Relation(citing_bib_key=bib_key, cited_bib_key=cited))
+        rdir = self.relations_dir()
+        if not rdir.exists():
+            return []
+        for path in sorted(rdir.glob("*.yml")):
+            bib_key = path.stem
+            data = yml.load(path) or {}
+            for cited in data.get("cite") or []:
+                edge = (bib_key, cited)
+                if edge not in seen:
+                    seen.add(edge)
+                    relations.append(Relation(citing_bib_key=bib_key, cited_bib_key=cited))
         return relations
 
     def save_relations(self, relations: list[Relation]) -> None:
@@ -624,8 +632,20 @@ class ProjectRepo:
         for r in relations:
             grouped.setdefault(r.citing_bib_key, {"cite": [], "cited_by": []})["cite"].append(r.cited_bib_key)
             grouped.setdefault(r.cited_bib_key, {"cite": [], "cited_by": []})["cited_by"].append(r.citing_bib_key)
-        entries = [{key: val} for key, val in sorted(grouped.items())]
-        yml.dump({"relations": entries}, self.relations_path())
+        rdir = self.relations_dir()
+        rdir.mkdir(parents=True, exist_ok=True)
+        expected_files = {self.relation_path(bib_key) for bib_key in grouped}
+        for old_path in rdir.glob("*.yml"):
+            if old_path not in expected_files:
+                old_path.unlink()
+        for bib_key, connections in sorted(grouped.items()):
+            yml.dump(
+                {
+                    "cite": sorted(set(connections["cite"])),
+                    "cited_by": sorted(set(connections["cited_by"])),
+                },
+                self.relation_path(bib_key),
+            )
 
     def _move_work(self, bib_key: str, from_set_id: str, to_set_id: str) -> None:
         """Move a work and its per-researcher decisions from one set to another."""
@@ -1053,9 +1073,8 @@ class ProjectRepo:
         """Idempotently create the directory layout and the empty start set."""
         self.sets_dir().mkdir(parents=True, exist_ok=True)
         self.works_dir().mkdir(parents=True, exist_ok=True)
+        self.relations_dir().mkdir(parents=True, exist_ok=True)
         self.researchers_dir().mkdir(parents=True, exist_ok=True)
-        if not self.relations_path().exists():
-            self.save_relations([])
         if not self.set_dir("00-start").root.exists():
             self.save_set(Set(id="00-start", kind=SetKind.START, iteration=0, works=[]))
 

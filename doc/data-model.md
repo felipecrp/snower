@@ -54,7 +54,7 @@ A final decision when researchers disagreed (stored alongside decisions).
 | `resolved_at` | `datetime` | |
 
 ### Relation
-A directed citation edge between two works (stored in `relations.yml`).
+A directed citation edge between two works (stored in `relations/<bib_key>.yml`).
 
 | Field | Type |
 |---|---|

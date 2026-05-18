@@ -62,8 +62,8 @@ cd ui && npm run electron:dev
 <project>/
   project.yml          # Project config: name, researchers, criteria, providers
   keys.yml             # Global BibTeX-key → work_id registry
-  relations.yml        # Citation graph (citing_work_id → cited_work_id)
   snowballing.yml      # Timestamps of when each paper was snowballed (per direction)
+  relations/           # Citation graph, one YAML file per paper
   sets/
     00-start/
       set.yml          # iteration, kind, parent_set_id

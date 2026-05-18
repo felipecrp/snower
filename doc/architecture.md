@@ -37,9 +37,11 @@ electron/
 ```
 <project>/
   project.yml          # name, researchers, criteria, providers
-  relations.yml        # citation graph: [{bib_key: {cite: [...], cited_by: [...]}}]
   keys.yml             # global registry: {bib_key: work_id}
   snowballing.yml      # timestamps: {direction: {bib_key: {at, found}}}
+  relations/           # per-paper citation graph files
+    wohlin2014snowballingsystematic.yml
+    ...
   works/               # per-paper BibTeX library, shared across all sets
     wohlin2014snowballingsystematic.bib
     ...
@@ -69,12 +71,12 @@ Each paper is stored once as `works/<bib_key>.bib`, shared across every set that
 When a consensus-accepted paper gets rejected, backward/forward papers that depended on it may lose their connection to the review corpus and become orphans.
 
 **Orphaning rule:**
-- A backward-set paper is orphaned when no consensus-accepted paper cites it (via `relations.yml`).
+- A backward-set paper is orphaned when no consensus-accepted paper cites it (via `relations/`).
 - A forward-set paper is orphaned when it cites no consensus-accepted paper.
 
 **Return rule:** When an orphan regains a connection, it returns to the **earliest valid iteration set** — specifically the set at `accepting_paper.iteration + 1` with the matching kind (`backward`/`forward`). The target set is created if it does not yet exist.
 
-**Implementation:** `recalculate_orphans()` in `repo.py` fully recomputes membership from `relations.yml` + current consensus on every call. No per-paper origin/direction metadata is stored. The orphan `set.yml` has the same `works: [bib_key, ...]` structure as any other set. Decisions for moved papers are migrated alongside them.
+**Implementation:** `recalculate_orphans()` in `repo.py` fully recomputes membership from `relations/` + current consensus on every call. No per-paper origin/direction metadata is stored. The orphan `set.yml` has the same `works: [bib_key, ...]` structure as any other set. Decisions for moved papers are migrated alongside them.
 
 ## Design Principles
 

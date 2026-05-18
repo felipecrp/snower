@@ -79,7 +79,7 @@ class DescribeProjectRepoInit:
         repo.init(project)
         assert (tmp_path / "proj" / "project.yml").exists()
         assert (tmp_path / "proj" / "sets").is_dir()
-        assert (tmp_path / "proj" / "relations.yml").exists()
+        assert (tmp_path / "proj" / "relations").is_dir()
 
     def it_round_trips_project(self, tmp_path: Path, project: Project):
         repo = ProjectRepo(tmp_path / "proj")
@@ -532,11 +532,38 @@ class DescribeProjectRepoRelations:
         rels = [Relation(citing_bib_key="wohlin2014a", cited_bib_key="wohlin2014b")]
         repo.save_relations(rels)
         assert repo.load_relations() == rels
+        assert (tmp_path / "proj" / "relations" / "wohlin2014a.yml").exists()
+        assert (tmp_path / "proj" / "relations" / "wohlin2014b.yml").exists()
 
     def it_starts_empty(self, tmp_path: Path, project: Project):
         repo = ProjectRepo(tmp_path / "proj")
         repo.init(project)
         assert repo.load_relations() == []
+
+    def it_deduplicates_edges_loaded_from_multiple_relation_files(self, tmp_path: Path, project: Project):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        relations_dir = tmp_path / "proj" / "relations"
+        (relations_dir / "wohlin2014a.yml").write_text("cite:\n  - wohlin2014b\ncited_by: []\n")
+        (relations_dir / "wohlin2014b.yml").write_text("cite: []\ncited_by:\n  - wohlin2014a\n")
+
+        assert repo.load_relations() == [Relation(citing_bib_key="wohlin2014a", cited_bib_key="wohlin2014b")]
+
+    def it_removes_stale_relation_files_when_relations_shrink(self, tmp_path: Path, project: Project):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        repo.save_relations([
+            Relation(citing_bib_key="a", cited_bib_key="b"),
+            Relation(citing_bib_key="b", cited_bib_key="c"),
+        ])
+
+        repo.save_relations([Relation(citing_bib_key="a", cited_bib_key="b")])
+
+        relations_dir = tmp_path / "proj" / "relations"
+        assert (relations_dir / "a.yml").exists()
+        assert (relations_dir / "b.yml").exists()
+        assert not (relations_dir / "c.yml").exists()
+        assert repo.load_relations() == [Relation(citing_bib_key="a", cited_bib_key="b")]
 
 
 class DescribeRunGlobalSnowballing:

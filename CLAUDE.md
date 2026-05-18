@@ -56,7 +56,7 @@ Every paper has a stable `work_id = sha1:<hex16>` derived from `surname|year|tit
 
 ## Orphan Sets
 
-Backward/forward papers that lose their connection to the consensus-accepted graph move to `sets/orphan/`. Orphans return to the earliest valid iteration set when they regain a connection. Membership is recomputed from `relations.yml` + consensus on every call to `recalculate_orphans()`. See `doc/architecture.md` for details.
+Backward/forward papers that lose their connection to the consensus-accepted graph move to `sets/orphan/`. Orphans return to the earliest valid iteration set when they regain a connection. Membership is recomputed from `relations/` + consensus on every call to `recalculate_orphans()`. See `doc/architecture.md` for details.
 
 ## Multi-researcher
 
