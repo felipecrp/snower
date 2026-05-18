@@ -5,10 +5,6 @@ const path = require('node:path');
 
 const uiRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(uiRoot, '..');
-const demoProjectRoot = '/tmp/demo-review';
-const projectRoot =
-  process.env.SNOW_PROJECT ||
-  (fs.existsSync(path.join(demoProjectRoot, 'project.yml')) ? demoProjectRoot : repoRoot);
 const apiUrl = process.env.SNOW_API_URL || 'http://127.0.0.1:8000/api/project';
 const uiUrl = process.env.SNOW_UI_URL || 'http://localhost:4200';
 
@@ -66,8 +62,8 @@ process.on('SIGINT', () => shutdown());
 process.on('SIGTERM', () => shutdown());
 
 async function main() {
-  console.log(`Starting Snow API for ${projectRoot}`);
-  run('snow api', 'uv', ['run', 'snow', 'serve', '--project', projectRoot], { cwd: repoRoot });
+  console.log('Starting Snow API');
+  run('snow api', 'uv', ['run', 'snow', 'serve'], { cwd: repoRoot });
 
   console.log('Starting Angular dev server');
   run('angular', 'npm', ['run', 'start'], { cwd: uiRoot });
