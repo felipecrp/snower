@@ -74,7 +74,7 @@ async function main() {
   console.log('Opening Electron');
   const env = { SNOW_UI_URL: uiUrl };
   if (process.platform !== 'win32') {
-    env.DBUS_SYSTEM_BUS_ADDRESS = 'unix:path=/dev/null';
+    env.DBUS_SYSTEM_BUS_ADDRESS = '';
   }
   const electron = run('electron', 'npm', ['run', 'electron'], {
     cwd: uiRoot,
