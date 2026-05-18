@@ -2,7 +2,34 @@
   <div class="error" *ngIf="error() as err">{{ err }}</div>
   <div class="saved" *ngIf="saved() as msg">{{ msg }}</div>
 
-  <section>
+  <section class="landing" *ngIf="!hasWorkspace()">
+    <div class="landing-card">
+      <h2>Welcome to Snow</h2>
+      <p>Choose a project to continue</p>
+
+      <div class="landing-actions">
+        <button (click)="openDialog('new')" [disabled]="dialogWorking()">New project</button>
+        <button (click)="openDialog('open')" [disabled]="dialogWorking()">Open project…</button>
+      </div>
+
+      <div class="recent-list" *ngIf="projectSvc.recents().length">
+        <p class="recent-label">Recent projects:</p>
+        <div class="recent-items">
+          <button
+            *ngFor="let proj of projectSvc.recents()"
+            class="recent-item"
+            (click)="openRecent(proj)"
+            [disabled]="dialogWorking()"
+          >
+            <span class="project-name">{{ proj.description || proj.name }}</span>
+            <span class="project-path" title="{{ proj.path }}">{{ proj.path }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section *ngIf="hasWorkspace()">
     <div class="section-header">
       <h2>Project</h2>
       <div class="workspace-actions">
@@ -31,7 +58,7 @@
     </div>
   </section>
 
-  <section>
+  <section *ngIf="hasWorkspace()">
     <h2>Researchers</h2>
     <table class="researchers-table">
       <thead>
@@ -68,7 +95,7 @@
     </div>
   </section>
 
-  <section>
+  <section *ngIf="hasWorkspace()">
     <h2>Identification</h2>
     <ng-container *ngIf="currentResearcher() as r">
       <div class="field-row">
@@ -84,7 +111,7 @@
     <p *ngIf="!currentResearcher()"><em>No researcher selected. Choose one from the topbar.</em></p>
   </section>
 
-  <section>
+  <section *ngIf="hasWorkspace()">
     <h2>Criteria</h2>
     <table class="criteria-table">
       <thead>
@@ -117,7 +144,7 @@
     </div>
   </section>
 
-  <section>
+  <section *ngIf="hasWorkspace()">
     <h2>Phases</h2>
     <table class="phases-table">
       <thead>
@@ -149,21 +176,13 @@
 <div class="dialog-backdrop" *ngIf="dialog() as kind" (click)="closeDialog()">
   <section class="workspace-dialog" (click)="$event.stopPropagation()">
     <header>
-      <strong>{{ kind === 'new' ? 'New Project' : 'Open Project' }}</strong>
+      <strong>Open Project</strong>
       <button type="button" (click)="closeDialog()">✕</button>
     </header>
 
-    <ng-container *ngIf="kind === 'open'; else newProjectFields">
-      <label>
-        Path
-        <input type="text" [ngModel]="dialogResolvedPath()" readonly placeholder="Choose a project folder" autofocus />
-      </label>
-      <div class="actions">
-        <button type="button" (click)="pickDirectory()">Choose project folder…</button>
-      </div>
-    </ng-container>
-
-    <ng-template #newProjectFields>
+    <!-- New Project Section -->
+    <div class="dialog-section" *ngIf="kind === 'new'">
+      <p class="dialog-section-title">Create New Project</p>
       <label>
         Parent path
         <input type="text" [ngModel]="dialogPath()" readonly placeholder="Choose the parent folder" autofocus />
@@ -189,13 +208,50 @@
         Description <span class="optional">(optional)</span>
         <input type="text" [ngModel]="dialogDescription()" (ngModelChange)="dialogDescription.set($event)" placeholder="Short description" />
       </label>
-    </ng-template>
+      <div class="dialog-actions">
+        <button (click)="closeDialog()" [disabled]="dialogWorking()">Cancel</button>
+        <button class="primary" (click)="confirmDialog()" [disabled]="dialogWorking()">
+          {{ dialogWorking() ? 'Working…' : 'Create' }}
+        </button>
+      </div>
+    </div>
 
-    <div class="dialog-actions">
-      <button (click)="closeDialog()" [disabled]="dialogWorking()">Cancel</button>
-      <button class="primary" (click)="confirmDialog()" [disabled]="dialogWorking()">
-        {{ dialogWorking() ? 'Working…' : (kind === 'new' ? 'Create' : 'Open') }}
-      </button>
+    <!-- Open Project Section -->
+    <div class="dialog-section" *ngIf="kind === 'open'">
+      <!-- Browse for Project -->
+      <p class="dialog-section-title">Use the following</p>
+      <label>
+        Path
+        <input type="text" [ngModel]="dialogResolvedPath()" readonly placeholder="Choose a project folder" autofocus />
+      </label>
+      <div class="actions">
+        <button type="button" (click)="pickDirectory()">Choose project folder…</button>
+      </div>
+
+      <!-- Recent Projects -->
+      <div class="dialog-recent" *ngIf="projectSvc.recents().length">
+        <div class="dialog-divider"></div>
+        <p class="dialog-section-title">Recent projects:</p>
+        <div class="dialog-recent-list">
+          <button
+            type="button"
+            *ngFor="let proj of projectSvc.recents()"
+            class="dialog-recent-item"
+            (click)="openRecent(proj)"
+            [disabled]="dialogWorking()"
+          >
+            <span class="project-path">{{ proj.path }}</span>
+            <span class="project-desc" *ngIf="proj.description">{{ proj.description }}</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="dialog-actions">
+        <button (click)="closeDialog()" [disabled]="dialogWorking()">Cancel</button>
+        <button class="primary" (click)="confirmDialog()" [disabled]="dialogWorking()">
+          {{ dialogWorking() ? 'Working…' : 'Open' }}
+        </button>
+      </div>
     </div>
   </section>
 </div>

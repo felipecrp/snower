@@ -272,3 +272,32 @@ button.danger {
   cursor: pointer;
   font-size: 0.85rem;
 }
+
+.landing { display: flex; align-items: center; justify-content: center; padding: 2rem; }
+.landing-card { width: min(450px, 100%); border: 1px solid #e5e7eb; border-radius: 8px; padding: 1.5rem; }
+.landing-card h2 { margin: 0 0 0.5rem; font-size: 1.2rem; }
+.landing-card > p { margin: 0 0 1rem; color: #6b7280; font-size: 0.9rem; }
+.recent-label { margin: 0 0 0.5rem; font-size: 0.85rem; font-weight: 500; color: #374151; }
+.recent-items { display: flex; flex-direction: column; gap: 0.3rem; }
+.recent-item { padding: 0.5rem 0; border: none; border-top: 1px solid #f3f4f6; border-radius: 0; background: none; cursor: pointer; text-align: left; font-size: 0.8rem; width: 100%; }
+.recent-item:hover:not(:disabled) { background: none; opacity: 0.75; }
+.recent-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.dialog-section-title { margin: 0 0 0.5rem; font-size: 0.85rem; font-weight: 500; color: #374151; }
+.project-name { font-weight: 500; display: block; color: #1f2937; }
+.project-path { font-family: monospace; color: #6b7280; font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; display: block; }
+.landing-actions { display: flex; flex-direction: row; gap: 0.5rem; margin-bottom: 1.25rem; }
+.landing-actions button { flex: 1; padding: 0.45rem 0.7rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem; border: 1px solid #d1d5db; background: white; }
+.landing-actions button:hover:not(:disabled) { background: #f3f4f6; }
+.landing-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+.landing-actions button:first-child { background: #2563eb; color: white; border-color: #2563eb; }
+.landing-actions button:first-child:hover:not(:disabled) { background: #1d4ed8; }
+.dialog-recent { margin-bottom: 0.75rem; }
+.dialog-recent-label { margin: 0 0 0.4rem; font-size: 0.85rem; font-weight: 500; color: #374151; }
+.dialog-recent-list { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.75rem; }
+.dialog-recent-item { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; padding: 0.45rem; border: 1px solid #e5e7eb; border-radius: 4px; background: #f9fafb; cursor: pointer; text-align: left; font-size: 0.75rem; }
+.dialog-recent-item:hover:not(:disabled) { background: #eff6ff; border-color: #bfdbfe; }
+.dialog-recent-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.dialog-recent-item .project-name { font-weight: 500; color: #1f2937; }
+.dialog-recent-item .project-path { color: #6b7280; font-family: monospace; }
+.dialog-recent-item .project-desc { color: #6b7280; }
+.dialog-divider { height: 1px; background: #e5e7eb; margin: 0.5rem 0; }
