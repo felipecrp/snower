@@ -15,6 +15,10 @@ export const routes: Routes = [
     loadComponent: () => import('./snowballing/snowballing').then((m) => m.SnowballingComponent),
   },
   {
+    path: 'results',
+    loadComponent: () => import('./results/results').then((m) => m.ResultsComponent),
+  },
+  {
     path: 'snow-log',
     loadComponent: () => import('./snow-log/snow-log').then((m) => m.SnowLogComponent),
   },

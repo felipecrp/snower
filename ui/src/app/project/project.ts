@@ -114,7 +114,7 @@ export class ProjectComponent {
         this.projectName.set(p.name);
         this.projectDescription.set(p.description ?? '');
         this.projectSvc.project.set(p);
-        document.title = `Snow - ${p.name}`;
+        document.title = `Snow - ${p.description || p.name}`;
         this.saved.set('Project info saved.');
       },
       error: (e) => this.error.set(`Failed to save project info: ${this.errorMessage(e)}`),

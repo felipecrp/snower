@@ -6,7 +6,7 @@ import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/rou
 import { ProjectService } from './project.service';
 import { ResearcherService } from './researcher.service';
 
-const TAB_ORDER = ['project', 'snowballing', 'start-set', 'snow-log'];
+const TAB_ORDER = ['project', 'snowballing', 'results'];
 
 @Component({
   selector: 'app-root',

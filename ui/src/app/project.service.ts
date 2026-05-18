@@ -79,7 +79,7 @@ export class ProjectService {
     this.api.getProject().subscribe({
       next: (p) => {
         this.project.set(p);
-        document.title = `Snow - ${p.name}`;
+        document.title = `Snow - ${p.description || p.name}`;
         // Set researcher AFTER project loads so options exist in topbar select
         if (autoSelectResearcherEmail) {
           this.researcherSvc.set(autoSelectResearcherEmail);

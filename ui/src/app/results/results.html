@@ -1,0 +1,179 @@
+<div class="page">
+  <div class="content" *ngIf="setSummaries().length; else empty">
+    <section class="section intro">
+      <div>
+      <h2>Snowballing Results</h2>
+      <p>Consensus outcomes organized for synthesis and reporting.</p>
+      </div>
+      <div class="summary" *ngIf="overview().total > 0">
+        <span><strong>{{ overview().accepted }}</strong> accepted</span>
+        <span><strong>{{ overview().rejected }}</strong> rejected</span>
+        <span><strong>{{ overview().unresolved }}</strong> unresolved</span>
+        <span><strong>{{ overview().acceptanceRate }}%</strong> acceptance</span>
+      </div>
+    </section>
+
+    <section class="section">
+      <h3>Step Flow</h3>
+      <p>Screening outcome for each set in the snowballing process.</p>
+      <div class="flow-list">
+        <article class="flow-card" *ngFor="let summary of setSummaries(); trackBy: trackBySet">
+          <div class="flow-topline">
+            <span class="set-badge">{{ summary.set.id }}</span>
+            <span class="set-kind">{{ summary.set.kind }}</span>
+          </div>
+          <div class="flow-title">Step {{ summary.set.iteration }}</div>
+          <div class="flow-stats">
+            <span>{{ summary.accepted }} accepted</span>
+            <span>{{ summary.rejected }} rejected</span>
+            <span>{{ summary.unresolved }} unresolved</span>
+          </div>
+          <div class="flow-total">{{ summary.total }} papers screened</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h3>By Step</h3>
+      <p>Accepted papers grouped by iteration, combining backward and forward sets in the same block.</p>
+      <div class="step-list">
+        <article class="step-card" *ngFor="let iteration of iterationSummaries(); trackBy: trackByIteration">
+          <header class="step-header">
+            <div>
+              <span class="set-badge">Iteration {{ iteration.iteration }}</span>
+              <h4>Snowballing step</h4>
+            </div>
+            <div class="step-summary">
+              <span>{{ iteration.accepted }}/{{ iteration.total }} accepted</span>
+              <span>{{ iteration.rejected }} rejected</span>
+              <span>{{ iteration.unresolved }} unresolved</span>
+            </div>
+          </header>
+          <div *ngIf="iteration.accepted > 0; else noneAccepted">
+            <section
+              class="step-section"
+              *ngFor="let summary of iteration.sections; trackBy: trackBySet"
+            >
+              <div class="step-section-header">
+                <div>
+                  <span class="set-badge">{{ summary.set.id }}</span>
+                  <span class="section-kind">{{ summary.set.kind | titlecase }}</span>
+                </div>
+                <div class="step-summary">
+                  <span>{{ summary.accepted }}/{{ summary.total }} accepted</span>
+                  <span>{{ summary.rejected }} rejected</span>
+                  <span>{{ summary.unresolved }} unresolved</span>
+                </div>
+              </div>
+              <table class="accepted-table" *ngIf="summary.acceptedPapers.length; else noSectionAccepted">
+                <thead>
+                  <tr>
+                    <th>Paper</th>
+                    <th>Year</th>
+                    <th>Venue</th>
+                    <th>Links</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let paper of summary.acceptedPapers; trackBy: trackByPaper">
+                    <td>
+                      <div class="paper-title">{{ paper.work.title }}</div>
+                      <div class="paper-meta">{{ paper.work.authors[0] || 'Unknown author' }}</div>
+                    </td>
+                    <td>{{ paper.work.year ?? '—' }}</td>
+                    <td>{{ paper.work.venue ?? '—' }}</td>
+                    <td>
+                      <div class="paper-links" *ngIf="hasPaperLinks(paper.work); else noLinks">
+                        <a *ngIf="paper.work.url" [href]="paper.work.url" target="_blank">URL</a>
+                        <a *ngIf="paper.work.doi && !paper.work.url" [href]="'https://doi.org/' + paper.work.doi" target="_blank">DOI</a>
+                        <a *ngIf="paper.work.pdf_url" [href]="paper.work.pdf_url" target="_blank">PDF</a>
+                        <a *ngIf="paper.work.has_local_pdf" [href]="localPdfUrl(paper.work.bib_key)" target="_blank">Local PDF</a>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <ng-template #noSectionAccepted>
+                <p class="empty-copy">No consensus-accepted papers in this set yet.</p>
+              </ng-template>
+            </section>
+          </div>
+          <ng-template #noneAccepted>
+            <p class="empty-copy">No consensus-accepted papers in this iteration yet.</p>
+          </ng-template>
+          <ng-template #noLinks>—</ng-template>
+        </article>
+      </div>
+    </section>
+
+    <div class="split">
+      <section class="section">
+        <h3>By Venue</h3>
+        <p>Accepted papers ranked by venue frequency.</p>
+        <div class="group-list" *ngIf="venueGroups().length; else noAcceptedPapers">
+          <article class="group-card" *ngFor="let group of venueGroups(); trackBy: trackByGroup">
+            <header class="group-header">
+              <h4>{{ group.label }}</h4>
+              <span>{{ group.count }} papers</span>
+            </header>
+            <table class="group-table">
+              <tbody>
+                <tr *ngFor="let paper of group.papers; trackBy: trackByPaper">
+                  <td>
+                    <div class="paper-title">{{ paper.work.title }}</div>
+                    <div class="group-meta">{{ paper.setId }}<span *ngIf="paper.work.year"> · {{ paper.work.year }}</span></div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>By Year</h3>
+        <p>Accepted papers ranked by publication year.</p>
+        <div class="group-list" *ngIf="yearGroups().length; else noAcceptedPapers">
+          <article class="group-card" *ngFor="let group of yearGroups(); trackBy: trackByGroup">
+            <header class="group-header">
+              <h4>{{ group.label }}</h4>
+              <span>{{ group.count }} papers</span>
+            </header>
+            <table class="group-table">
+              <tbody>
+                <tr *ngFor="let paper of group.papers; trackBy: trackByPaper">
+                  <td>
+                    <div class="paper-title">{{ paper.work.title }}</div>
+                    <div class="group-meta">{{ paper.setId }}<span *ngIf="paper.work.venue"> · {{ paper.work.venue }}</span></div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </article>
+        </div>
+      </section>
+    </div>
+
+    <section class="section" *ngIf="orphanSummary() as orphan">
+      <h3>Orphaned Papers</h3>
+      <p>Excluded from the main flow, but still visible for traceability.</p>
+      <div class="orphan-box orphan-stats">
+        <span><strong>{{ orphan.total }}</strong> total</span>
+        <span><strong>{{ orphan.accepted }}</strong> accepted</span>
+        <span><strong>{{ orphan.rejected }}</strong> rejected</span>
+        <span><strong>{{ orphan.unresolved }}</strong> unresolved</span>
+      </div>
+    </section>
+  </div>
+
+  <ng-template #noAcceptedPapers>
+    <p class="empty-copy">No consensus-accepted papers available for grouping yet.</p>
+  </ng-template>
+
+  <ng-template #empty>
+    <div class="empty">
+      <p *ngIf="projectSvc.sets().length === 0">No sets yet. Import a start set and triage papers first.</p>
+      <p *ngIf="projectSvc.sets().length > 0">No regular snowballing sets available yet.</p>
+    </div>
+  </ng-template>
+</div>

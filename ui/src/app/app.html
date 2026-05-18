@@ -1,7 +1,7 @@
 <header class="topbar">
   <div class="brand">
     <strong>Snow</strong>
-    <span class="project" *ngIf="project() as p">— {{ p.name }}</span>
+    <span class="project" *ngIf="project() as p">— {{ p.description || p.name }}</span>
   </div>
   <div class="topbar-right">
     <div class="researcher">
@@ -31,12 +31,8 @@
     <span class="tab-icon">🔍</span>
     <span class="tab-label">Snowballing</span>
   </a>
-  <a routerLink="/start-set" routerLinkActive="active" class="tab-link">
-    <span class="tab-icon">📥</span>
-    <span class="tab-label">Start Set</span>
-  </a>
-  <a routerLink="/snow-log" routerLinkActive="active" class="tab-link">
-    <span class="tab-icon">❄</span>
-    <span class="tab-label">Snow Log</span>
+  <a routerLink="/results" routerLinkActive="active" class="tab-link">
+    <span class="tab-icon">📊</span>
+    <span class="tab-label">Results</span>
   </a>
 </nav>
