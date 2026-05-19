@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from snow.api.routers import bidding, decisions, downloads, git_user, orphans, project, recent_projects, sets, snowballing, workspace
+from snow.api.routers import bidding, decisions, downloads, git_user, orphans, project, recent_projects, sets, snowballing, workspace, works
 from snow.api.state import ApiState
 
 
@@ -32,4 +32,5 @@ def create_app(project_root: Path | None = None) -> FastAPI:
     app.include_router(orphans.router)
     app.include_router(downloads.router)
     app.include_router(bidding.router)
+    app.include_router(works.router)
     return app

@@ -91,6 +91,14 @@ export class ApiService {
     });
   }
 
+  getWorkBibtex(bibKey: string): Observable<{ bibtex: string }> {
+    return this.http.get<{ bibtex: string }>(`/api/works/${bibKey}/bibtex`);
+  }
+
+  putWorkBibtex(bibKey: string, bibtex: string): Observable<Work> {
+    return this.http.put<Work>(`/api/works/${bibKey}/bibtex`, { bibtex });
+  }
+
   getWorkspace(): Observable<WorkspaceInfo | null> {
     return this.http.get<WorkspaceInfo | null>('/api/workspace');
   }

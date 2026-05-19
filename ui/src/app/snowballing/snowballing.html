@@ -311,6 +311,18 @@
             </ng-template>
             <button
               type="button"
+              class="bibtex-edit"
+              aria-label="Edit BibTeX"
+              title="Edit BibTeX (v e)"
+              (click)="openBibtexEditor(w); $event.stopPropagation()"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
+              </svg>
+            </button>
+            <button
+              type="button"
               class="details-toggle"
               [attr.aria-expanded]="isWorkExpanded(w.bib_key)"
               [attr.aria-label]="isWorkExpanded(w.bib_key) ? 'Collapse details' : 'Expand details'"
@@ -379,5 +391,29 @@
       </li>
     </ul>
     <p *ngIf="!dialogCriteria().length"><em>No matching criteria.</em></p>
+  </section>
+</div>
+
+<div
+  class="dialog-backdrop"
+  *ngIf="bibtexDialog() as dialog"
+  (click)="closeBibtexDialog()"
+>
+  <section class="bibtex-dialog" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+    <header>
+      <strong>Edit BibTeX — {{ dialog.bibKey }}</strong>
+      <button type="button" (click)="closeBibtexDialog()">x</button>
+    </header>
+    <textarea
+      rows="20"
+      [ngModel]="bibtexDraft()"
+      (ngModelChange)="updateBibtexDraft($event)"
+      (keydown.escape)="closeBibtexDialog(); $event.preventDefault()"
+    ></textarea>
+    <p class="bibtex-error" *ngIf="bibtexError() as err">{{ err }}</p>
+    <footer>
+      <button type="button" (click)="closeBibtexDialog()">Cancel</button>
+      <button type="button" (click)="saveBibtex()" [disabled]="bibtexSaving()">Save</button>
+    </footer>
   </section>
 </div>

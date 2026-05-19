@@ -338,9 +338,33 @@
 
   }
 
-  .details-toggle {
+  .bibtex-edit {
     flex: 0 0 auto;
     margin-left: auto;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: white;
+    color: #374151;
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    svg {
+      width: 14px;
+      height: 14px;
+      display: block;
+    }
+
+    &:hover { background: #f1f5f9; }
+  }
+
+  .details-toggle {
+    flex: 0 0 auto;
+    margin-left: 0;
     width: 28px;
     height: 28px;
     padding: 0;
@@ -673,4 +697,65 @@
     background: #f3f4f6;
     border-radius: 6px;
   }
+}
+
+.bibtex-dialog {
+  width: min(720px, calc(100vw - 2rem));
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    button { cursor: pointer; }
+  }
+
+  textarea {
+    width: 100%;
+    font-family: monospace;
+    font-size: 0.85rem;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    resize: vertical;
+    box-sizing: border-box;
+  }
+
+  footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+
+    button {
+      padding: 0.4rem 0.9rem;
+      border-radius: 6px;
+      border: 1px solid #d1d5db;
+      background: white;
+      cursor: pointer;
+      font-size: 0.9rem;
+
+      &:last-child {
+        background: #1e40af;
+        color: white;
+        border-color: #1e40af;
+        &:hover:not(:disabled) { background: #1d3fa5; }
+        &:disabled { opacity: 0.5; cursor: default; }
+      }
+
+      &:first-child:hover { background: #f1f5f9; }
+    }
+  }
+}
+
+.bibtex-error {
+  color: #dc2626;
+  font-size: 0.85rem;
+  margin: 0;
 }

@@ -17,6 +17,7 @@ import { ResearcherService } from '../researcher.service';
 
 type SortField = 'author' | 'title' | 'venue' | 'criterion';
 type CriterionDialog = { verdict: 'accept' | 'reject'; bibId: string };
+type BibtexDialog = { bibKey: string };
 type PendingWork = { work: Work; status: 'pending' | 'importing' | 'done' | 'error'; error?: string };
 
 const SORT_FIELDS: SortField[] = ['author', 'title', 'venue', 'criterion'];
@@ -62,6 +63,10 @@ export class SnowballingComponent {
   readonly highlightedCriterionIndex = signal(0);
   readonly lastCriterionByVerdict = signal<Partial<Record<'accept' | 'reject', string>>>({});
   readonly expandedWorkIds = signal<Record<string, boolean>>({});
+  readonly bibtexDialog = signal<BibtexDialog | null>(null);
+  readonly bibtexDraft = signal<string>('');
+  readonly bibtexError = signal<string | null>(null);
+  readonly bibtexSaving = signal<boolean>(false);
 
   private pendingKeys = '';
 
@@ -330,7 +335,7 @@ export class SnowballingComponent {
 
   @HostListener('document:keydown', ['$event'])
   handleKeyboard(event: KeyboardEvent): void {
-    if (this.criterionDialog()) return;
+    if (this.criterionDialog() || this.bibtexDialog()) return;
     if (this.isTypingTarget(event.target)) return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.shiftKey) {
@@ -353,6 +358,7 @@ export class SnowballingComponent {
       this.pendingKeys = '';
       event.preventDefault();
       if (event.key === 'v') this.toggleSelectedWorkDetails();
+      else if (event.key === 'e') this.openBibtexEditorForSelected();
       return;
     }
 
@@ -1259,4 +1265,60 @@ export class SnowballingComponent {
   trackBySetId = (_: number, x: ReviewSet) => x.id;
   trackByBibKey = (_: number, x: Work) => x.bib_key;
   trackByCriterionId = (_: number, x: Criterion) => x.id;
+
+  openBibtexEditor(w: Work): void {
+    this.bibtexError.set(null);
+    this.bibtexDraft.set('');
+    this.bibtexDialog.set({ bibKey: w.bib_key });
+    this.api.getWorkBibtex(w.bib_key).subscribe({
+      next: (res) => this.bibtexDraft.set(res.bibtex),
+      error: (e) => {
+        this.bibtexDialog.set(null);
+        this.error.set(`Failed to load BibTeX: ${e.message}`);
+      },
+    });
+  }
+
+  openBibtexEditorForSelected(): void {
+    const work = this.selectedWork();
+    if (!work) return;
+    this.openBibtexEditor(work);
+  }
+
+  updateBibtexDraft(v: string): void {
+    this.bibtexDraft.set(v);
+    this.bibtexError.set(null);
+  }
+
+  closeBibtexDialog(): void {
+    this.bibtexDialog.set(null);
+    this.bibtexDraft.set('');
+    this.bibtexError.set(null);
+  }
+
+  saveBibtex(): void {
+    const dialog = this.bibtexDialog();
+    if (!dialog) return;
+    this.bibtexSaving.set(true);
+    this.api.putWorkBibtex(dialog.bibKey, this.bibtexDraft()).subscribe({
+      next: (updatedWork) => {
+        this.bibtexSaving.set(false);
+        this.closeBibtexDialog();
+        const replaceWork = (works: Work[]): Work[] =>
+          works.map((w) => (w.bib_key === updatedWork.bib_key ? updatedWork : w));
+        this.projectSvc.sets.update((all) =>
+          all.map((s) => ({ ...s, works: replaceWork(s.works) })),
+        );
+        this.currentSet.update((cs) =>
+          cs ? { ...cs, works: replaceWork(cs.works) } : cs,
+        );
+      },
+      error: (e) => {
+        this.bibtexSaving.set(false);
+        const detail = e.error?.detail;
+        const msg = typeof detail === 'object' ? detail.message : (detail ?? e.message);
+        this.bibtexError.set(msg);
+      },
+    });
+  }
 }

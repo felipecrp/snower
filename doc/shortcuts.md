@@ -50,3 +50,4 @@ Snow provides keyboard shortcuts for efficient navigation and paper management. 
 | f + f | Toggle perspective (Researcher ↔ Majority) |
 | f + s | Cycle sort field (author → title → venue → criterion) |
 | v + v | Toggle selected paper details |
+| v + e | Open BibTeX editor for selected paper |
