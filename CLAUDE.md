@@ -1,6 +1,8 @@
 # Snow — Context for Claude
 
-Snow is a local-first systematic literature review tool using the Wohlin snowballing method. All data is stored as BibTeX + YAML files, versionable with git. The server runs on `127.0.0.1`; no data leaves the machine.
+Snow is a local-first systematic literature review tool using the Wohlin
+snowballing method. All data is stored as BibTeX + YAML files, versionable with
+git. The server runs on `127.0.0.1`; no data leaves the machine.
 
 ## Instructions
 
@@ -18,7 +20,7 @@ Snow is a local-first systematic literature review tool using the Wohlin snowbal
 
 ```bash
 # Backend
-uv run snow serve --project <project-dir>
+uv run snow serve 
 
 # Frontend
 cd ui && npm run start
@@ -35,7 +37,6 @@ uv run pytest
 - **All business logic in Python.** Angular is a pure UI layer that calls the local API.
 - **Criterion drives verdict.** No accept/reject buttons; selecting an `include` criterion → `accept`, `exclude` → `reject`.
 - **Tests alongside modules**, not in a batch at the end. Test tree mirrors `snow/` hierarchy under `tests/`.
-- **English for code**, Portuguese for conversation.
 - **Explain before non-trivial edits.**
 
 ## Project Layout
@@ -46,10 +47,6 @@ Key entry points:
 - `snow/storage/repo.py` — `ProjectRepo`, all disk I/O
 - `snow/domain/identity.py` — `work_id()`, `mint_bib_key()`
 - `snow/providers/factory.py` — `get_provider()` for snowballing; `get_enrichment_provider()` (always OpenAlex, used at import)
-
-## Data Identity
-
-Every paper has a stable `work_id = sha1:<hex16>` derived from `surname|year|title` (Unicode-normalized). DOI is metadata only. BibTeX keys follow `<surname><year><slug>`; the global registry is `keys.yml`. See `doc/data-model.md` for details.
 
 ## Snowballing Logic
 
@@ -68,17 +65,3 @@ Backward/forward papers that lose their connection to the consensus-accepted gra
 - `X-Researcher-Id` header on PUT/DELETE decision requests.
 - Renaming a researcher id via `PUT /api/project/researchers` with `previous_id` rewrites all decisions.
 - Removing a researcher deletes all their decisions across all sets.
-
-## Results / Consensus
-
-- "Results (consensus)" option in the "View as" dropdown.
-- Paper is `accept` if `accept_count > reject_count` across all researchers; `reject` if the reverse.
-- Ties and papers with no votes are hidden.
-- Sidebar shows `X/Y` (consensus-accepted / total) per set.
-
-## What's Not Implemented Yet
-
-- Packaged Electron distribution (dev mode only)
-- Formal resolution UI (Resolution model exists but is not exposed in the UI)
-- Proxy configuration for scholarly (needed for large batches)
-- Export to consolidated `.bib` of accepted papers
