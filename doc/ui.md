@@ -23,14 +23,13 @@ The main working screen. Layout:
 └────────────┴─────────────────────────────────────────┘
 ```
 
-### View as Dropdown
+### Researcher Dropdown
 
-Located in the topbar. Replaces the old "Researcher" label.
+Located in the topbar. Selects the active researcher whose decisions are shown and edited.
 
 | Option | Behaviour |
 |---|---|
-| `— select —` | No triage mode active; cards show a placeholder message |
-| `Results (consensus)` | Results mode: shows papers with majority decision |
+| `— select —` | No researcher active; cards show a placeholder message |
 | `<researcher name>` | Triage mode for that researcher |
 
 ### Sets Sidebar
@@ -49,26 +48,21 @@ At the bottom of the sidebar:
 Sticky bar above the paper list (visible only when a set is selected):
 
 - **Sort by**: author / title / journal/conference / criterion
-- **Show selected papers** checkbox
-- **Show rejected papers** checkbox
-- **Counts**: N selected · N rejected · N total · N shown
+- **Chip row**: compact visibility toggles — `accepted`, `rejected`, `undecided` (OR filters) and `assigned to me` (AND narrowing filter). Each chip shows its count. See [consensus.md](consensus.md) for full semantics.
+- **N shown**: live count of papers visible after all chip filters.
 
-### Triage Mode (researcher selected)
+### Perspective Toggle
+
+Located in the sidebar below the Orphan set (only shown for multi-researcher projects). Switches between **Researcher** (personal decisions) and **Majority** (group consensus) perspectives. Both perspectives keep the same triage controls — Majority mode adds a per-researcher vote summary line above the action buttons. See [consensus.md](consensus.md).
+
+### Paper Cards
 
 Each paper card shows:
 - Header: title, authors, year, venue, DOI link
-- Vote counts: badges showing how many researchers accepted/rejected
+- In **Majority** perspective: a vote summary line, e.g. `Alice and Bob accepted · Carol rejected`
 - **Criterion dropdown**: selecting an `include` criterion saves an `accept` decision; selecting an `exclude` criterion saves a `reject` decision; selecting `— no decision —` deletes the decision
-- **Verdict badge**: shown after a decision is saved
+- **Verdict badge**: always visible — shows `accepted`, `rejected`, or `undecided` based on the active perspective (see [consensus.md](consensus.md))
 - **Note field**: optional justification, saved on blur
-
-### Results Mode
-
-When `Results (consensus)` is selected:
-- Only papers with a clear majority (accept > reject, or reject > accept) are shown
-- Filter checkboxes control whether accepted and/or rejected papers appear
-- Card footer shows `accepted` / `rejected` badge and vote counts (read-only)
-- The sidebar X/Y counter always reflects consensus regardless of the current view mode
 
 ### Keyboard Shortcuts
 

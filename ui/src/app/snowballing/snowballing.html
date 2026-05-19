@@ -28,6 +28,21 @@
           {{ os.works.length }}
         </span>
       </li>
+      <div class="perspective-toggle" *ngIf="(project()?.researchers?.length ?? 0) > 1">
+        <label class="perspective-label">Perspective</label>
+        <div class="toggle-group">
+          <button
+            class="toggle-btn"
+            [class.active]="perspective() === 'researcher'"
+            (click)="perspective.set('researcher')"
+          >Researcher</button>
+          <button
+            class="toggle-btn"
+            [class.active]="perspective() === 'majority'"
+            (click)="perspective.set('majority')"
+          >Majority</button>
+        </div>
+      </div>
     </div>
     <div class="sets-footer">
       <input
@@ -98,47 +113,59 @@
               <option value="criterion">criterion</option>
             </select>
           </label>
-          <div class="visibility-filters" aria-label="Visibility filters">
-            <span>show</span>
-            <label>
+          <div class="chip-filters" aria-label="Visibility filters">
+            <span class="chip-label">show</span>
+            <label class="chip" [class.checked]="showAccepted()">
               <input
                 type="checkbox"
-                [checked]="showSelected()"
-                (change)="showSelected.set($any($event.target).checked); visibilityMode.set('custom'); releaseFilterFocus()"
+                [checked]="showAccepted()"
+                (change)="showAccepted.set($any($event.target).checked); releaseFilterFocus()"
               />
-              accepted
+              <span class="chip-content">
+                <span class="chip-checkmark">✓</span>
+                <span class="chip-count">{{ classificationCounts().accepted }}</span>
+                <span>accepted</span>
+              </span>
             </label>
-            <label>
+            <label class="chip" [class.checked]="showRejected()">
               <input
                 type="checkbox"
                 [checked]="showRejected()"
-                (change)="showRejected.set($any($event.target).checked); visibilityMode.set('custom'); releaseFilterFocus()"
+                (change)="showRejected.set($any($event.target).checked); releaseFilterFocus()"
               />
-              rejected
+              <span class="chip-content">
+                <span class="chip-checkmark">✓</span>
+                <span class="chip-count">{{ classificationCounts().rejected }}</span>
+                <span>rejected</span>
+              </span>
             </label>
-            <label>
+            <label class="chip" [class.checked]="showUndecided()">
               <input
                 type="checkbox"
-                [checked]="showPending()"
-                (change)="showPending.set($any($event.target).checked); visibilityMode.set('custom'); releaseFilterFocus()"
+                [checked]="showUndecided()"
+                (change)="showUndecided.set($any($event.target).checked); releaseFilterFocus()"
               />
-              undecided
+              <span class="chip-content">
+                <span class="chip-checkmark">✓</span>
+                <span class="chip-count">{{ classificationCounts().undecided }}</span>
+                <span>undecided</span>
+              </span>
             </label>
-            <label class="consensus-toggle">
-              <input type="checkbox" [checked]="resultsMode()" (change)="resultsMode.set($any($event.target).checked); releaseFilterFocus()" />
-              final result
+            <div class="chip-divider"></div>
+            <label class="chip and-chip" [class.checked]="onlyAssignedToMe()">
+              <input
+                type="checkbox"
+                [checked]="onlyAssignedToMe()"
+                (change)="onlyAssignedToMe.set($any($event.target).checked); releaseFilterFocus()"
+              />
+              <span class="chip-content">
+                <span class="chip-checkmark">✓</span>
+                <span class="chip-count">{{ assignedToMeCount() }}</span>
+                <span>assigned to me</span>
+              </span>
             </label>
           </div>
-          <label class="assigned-toggle">
-            <input type="checkbox" [checked]="onlyAssigned()" (change)="onlyAssigned.set($any($event.target).checked); releaseFilterFocus()" />
-            assigned to me
-          </label>
-          <span class="counts" *ngIf="triageCounts() as counts">
-            <strong>{{ counts.selected }}</strong> selected
-            <strong>{{ counts.rejected }}</strong> rejected
-            <strong>{{ counts.total }}</strong> total
-            <span>{{ counts.shown }} shown</span>
-          </span>
+          <span class="shown-count">{{ shownCount() }} shown</span>
         </div>
 
         <article
@@ -232,65 +259,55 @@
             </div>
           </section>
 
+          <div class="vote-summary" *ngIf="perspective() === 'majority' && getVoteSummary(w.bib_key)">
+            {{ getVoteSummary(w.bib_key) }}
+          </div>
           <footer class="triage">
-            <ng-container *ngIf="resultsMode(); else triageMode">
-              <span class="badge" [class.accept]="consensusFor(w.bib_key) === 'accept'" [class.reject]="consensusFor(w.bib_key) === 'reject'">
-                {{ consensusFor(w.bib_key) === 'accept' ? 'accepted' : 'rejected' }}
+            <ng-container *ngIf="activeResearcherId(); else needResearcher">
+              <button
+                class="bid-btn"
+                [class.bid-active]="isBidded(w.bib_key)"
+                (click)="toggleBid($event, w)"
+                [title]="isBidded(w.bib_key) ? 'Remove from my assignments' : 'Add to my assignments'"
+                type="button"
+              >{{ isBidded(w.bib_key) ? '−' : '+' }}</button>
+              <select
+                [ngModel]="decisionFor(w.bib_key)?.criterion_id ?? null"
+                (ngModelChange)="onCriterionChange(w, $event); releaseFilterFocus()"
+              >
+                <option [ngValue]="null">— no decision —</option>
+                <optgroup label="Include (accept)">
+                  <option *ngFor="let c of includeCriteria()" [ngValue]="c.id">
+                    {{ c.id }}: {{ c.description }}
+                  </option>
+                </optgroup>
+                <optgroup label="Exclude (reject)">
+                  <option *ngFor="let c of excludeCriteria()" [ngValue]="c.id">
+                    {{ c.id }}: {{ c.description }}
+                  </option>
+                </optgroup>
+              </select>
+              <span
+                class="badge"
+                [class.accept]="verdictLabelFor(w.bib_key) === 'accepted'"
+                [class.reject]="verdictLabelFor(w.bib_key) === 'rejected'"
+                [class.undecided]="verdictLabelFor(w.bib_key) === 'undecided'"
+              >{{ verdictLabelFor(w.bib_key) }}</span>
+              <span class="phase-label" *ngIf="getPhaseInfoForWork(w.bib_key) as phaseInfo">
+                {{ phaseInfo.id }}: {{ phaseInfo.description }}
               </span>
-              <span class="consensus-votes">
-                {{ voteCountsFor(w.bib_key).selected }} accept · {{ voteCountsFor(w.bib_key).rejected }} reject
-              </span>
-              <span class="consensus-votes" *ngIf="commentCountFor(w.bib_key) as commentCount">
-                {{ commentCount }} {{ commentCount === 1 ? 'comment' : 'comments' }}
-              </span>
+              <input
+                type="text"
+                placeholder="note (optional)"
+                [ngModel]="noteFor(w.bib_key)"
+                (ngModelChange)="updateNoteDraft(w.bib_key, $event)"
+                (blur)="saveNote(w)"
+                (keydown.escape)="blurAndSaveNote($event, w); $event.preventDefault()"
+                [disabled]="!decisionFor(w.bib_key)"
+              />
             </ng-container>
-            <ng-template #triageMode>
-              <ng-container *ngIf="activeResearcherId(); else needResearcher">
-                <button
-                  class="bid-btn"
-                  [class.bid-active]="isBidded(w.bib_key)"
-                  (click)="toggleBid($event, w)"
-                  [title]="isBidded(w.bib_key) ? 'Remove from my assignments' : 'Add to my assignments'"
-                  type="button"
-                >{{ isBidded(w.bib_key) ? '−' : '+' }}</button>
-                <select
-                  [ngModel]="decisionFor(w.bib_key)?.criterion_id ?? null"
-                  (ngModelChange)="onCriterionChange(w, $event); releaseFilterFocus()"
-                >
-                  <option [ngValue]="null">— no decision —</option>
-                  <optgroup label="Include (accept)">
-                    <option *ngFor="let c of includeCriteria()" [ngValue]="c.id">
-                      {{ c.id }}: {{ c.description }}
-                    </option>
-                  </optgroup>
-                  <optgroup label="Exclude (reject)">
-                    <option *ngFor="let c of excludeCriteria()" [ngValue]="c.id">
-                      {{ c.id }}: {{ c.description }}
-                    </option>
-                  </optgroup>
-                </select>
-                <ng-container *ngIf="decisionFor(w.bib_key) as existing">
-                  <span class="badge" [class.accept]="existing.verdict === 'accept'"
-                        [class.reject]="existing.verdict === 'reject'">
-                    {{ existing.verdict }}
-                  </span>
-                </ng-container>
-                <span class="phase-label" *ngIf="getPhaseInfoForWork(w.bib_key) as phaseInfo">
-                  {{ phaseInfo.id }}: {{ phaseInfo.description }}
-                </span>
-                <input
-                  type="text"
-                  placeholder="note (optional)"
-                  [ngModel]="noteFor(w.bib_key)"
-                  (ngModelChange)="updateNoteDraft(w.bib_key, $event)"
-                  (blur)="saveNote(w)"
-                  (keydown.escape)="blurAndSaveNote($event, w); $event.preventDefault()"
-                  [disabled]="!decisionFor(w.bib_key)"
-                />
-              </ng-container>
-              <ng-template #needResearcher>
-                <em>Select an active researcher to triage.</em>
-              </ng-template>
+            <ng-template #needResearcher>
+              <em>Select an active researcher to triage.</em>
             </ng-template>
             <button
               type="button"

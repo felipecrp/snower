@@ -17,8 +17,6 @@ import { ResearcherService } from '../researcher.service';
 
 type SortField = 'author' | 'title' | 'venue' | 'criterion';
 type CriterionDialog = { verdict: 'accept' | 'reject'; bibId: string };
-type VisibilityMode = 'pending' | 'selected' | 'rejected' | 'all' | 'custom';
-type TriageCounts = { selected: number; rejected: number; total: number; shown: number };
 type PendingWork = { work: Work; status: 'pending' | 'importing' | 'done' | 'error'; error?: string };
 
 const SORT_FIELDS: SortField[] = ['author', 'title', 'venue', 'criterion'];
@@ -49,15 +47,14 @@ export class SnowballingComponent {
   readonly inFlightSnowball = signal<ReadonlySet<string>>(new Set());
 
   readonly biddings = signal<Bidding[]>([]);
-  readonly onlyAssigned = signal(false);
   readonly biddingRunning = signal(false);
-  readonly resultsMode = signal(false);
-  readonly showPending = signal(true);
-  readonly showSelected = signal(true);
-  readonly showRejected = signal(false);
+  readonly perspective = signal<'researcher' | 'majority'>('researcher');
+  readonly showAccepted = signal(true);
+  readonly showRejected = signal(true);
+  readonly showUndecided = signal(true);
+  readonly onlyAssignedToMe = signal(false);
   readonly sortField = signal<SortField>('author');
   readonly activePhase = signal<string | null>(null);
-  readonly visibilityMode = signal<VisibilityMode>('selected');
   readonly selectedWorkId = signal<string | null>(null);
   readonly criterionDialog = signal<CriterionDialog | null>(null);
   readonly criterionQuery = signal('');
@@ -68,6 +65,19 @@ export class SnowballingComponent {
 
   private pendingKeys = '';
 
+  private classifyWork(workId: string): 'accept' | 'reject' | 'undecided' {
+    if (this.perspective() === 'majority') {
+      const consensus = this.consensusFor(workId);
+      if (consensus === 'accept') return 'accept';
+      if (consensus === 'reject') return 'reject';
+      return 'undecided';
+    }
+    const decision = this.decisionFor(workId);
+    if (decision?.verdict === 'accept') return 'accept';
+    if (decision?.verdict === 'reject') return 'reject';
+    return 'undecided';
+  }
+
   readonly assignedToMe = computed<Set<string>>(() => {
     const me = this.activeResearcherId();
     if (!me) return new Set();
@@ -75,21 +85,43 @@ export class SnowballingComponent {
     return new Set(bidding?.work_ids ?? []);
   });
 
+  readonly assignedToMeCount = computed(() => {
+    const set = this.currentSet();
+    if (!set) return 0;
+    const assigned = this.assignedToMe();
+    return set.works.filter((w) => assigned.has(w.bib_key)).length;
+  });
+
+  readonly classificationCounts = computed(() => {
+    const set = this.currentSet();
+    if (!set) return { accepted: 0, rejected: 0, undecided: 0 };
+    let accepted = 0;
+    let rejected = 0;
+    let undecided = 0;
+    for (const work of set.works) {
+      const classification = this.classifyWork(work.bib_key);
+      if (classification === 'accept') accepted += 1;
+      if (classification === 'reject') rejected += 1;
+      if (classification === 'undecided') undecided += 1;
+    }
+    return { accepted, rejected, undecided };
+  });
+
   readonly filteredWorks = computed(() => {
     const set = this.currentSet();
     if (!set) return [];
-    const showPend = this.showPending();
-    const showSel = this.showSelected();
+    const showAcc = this.showAccepted();
     const showRej = this.showRejected();
-    const onlyAssigned = this.onlyAssigned();
+    const showUnd = this.showUndecided();
+    const onlyAssigned = this.onlyAssignedToMe();
     const assigned = this.assignedToMe();
     return this.sortWorks(
       set.works.filter((w) => {
         if (onlyAssigned && !assigned.has(w.bib_key)) return false;
-        const verdict = this.decisionFor(w.bib_key)?.verdict;
-        if (!verdict) return showPend;
-        if (verdict === 'accept') return showSel;
-        return showRej;
+        const classification = this.classifyWork(w.bib_key);
+        if (classification === 'accept') return showAcc;
+        if (classification === 'reject') return showRej;
+        return showUnd;
       }),
     );
   });
@@ -101,23 +133,7 @@ export class SnowballingComponent {
     () => this.sortCriteria(this.project()?.criteria.filter((c) => c.kind === 'exclude') ?? []),
   );
   readonly phases = computed(() => this.project()?.phases ?? []);
-  readonly triageCounts = computed<TriageCounts>(() => {
-    const set = this.currentSet();
-    if (!set) return { selected: 0, rejected: 0, total: 0, shown: 0 };
-    let selected = 0;
-    let rejected = 0;
-    for (const work of set.works) {
-      const verdict = this.decisionFor(work.bib_key)?.verdict;
-      if (verdict === 'accept') selected += 1;
-      if (verdict === 'reject') rejected += 1;
-    }
-    return {
-      selected,
-      rejected,
-      total: set.works.length,
-      shown: this.filteredWorks().length,
-    };
-  });
+  readonly shownCount = computed(() => this.filteredWorks().length);
   readonly selectedWork = computed(() => {
     const works = this.filteredWorks();
     return works.find((w) => w.bib_key === this.selectedWorkId()) ?? works[0] ?? null;
@@ -147,10 +163,11 @@ export class SnowballingComponent {
   });
 
   private static readonly LAST_SET_KEY = 'snow:last-set';
-  private static readonly SHOW_PENDING_KEY = 'snow:show-pending';
-  private static readonly SHOW_SELECTED_KEY = 'snow:show-selected';
+  private static readonly PERSPECTIVE_KEY = 'snow:perspective';
+  private static readonly SHOW_ACCEPTED_KEY = 'snow:show-accepted';
   private static readonly SHOW_REJECTED_KEY = 'snow:show-rejected';
-  private static readonly RESULTS_MODE_KEY = 'snow:results-mode';
+  private static readonly SHOW_UNDECIDED_KEY = 'snow:show-undecided';
+  private static readonly ONLY_ASSIGNED_TO_ME_KEY = 'snow:only-assigned-to-me';
   private static readonly SORT_FIELD_KEY = 'snow:sort-field';
   private static readonly ACTIVE_PHASE_KEY = 'snow:active-phase';
   private setAutoSelected = false;
@@ -173,10 +190,11 @@ export class SnowballingComponent {
 
     // Save filter preferences when they change
     effect(() => {
-      localStorage.setItem(SnowballingComponent.SHOW_PENDING_KEY, String(this.showPending()));
-      localStorage.setItem(SnowballingComponent.SHOW_SELECTED_KEY, String(this.showSelected()));
+      localStorage.setItem(SnowballingComponent.PERSPECTIVE_KEY, this.perspective());
+      localStorage.setItem(SnowballingComponent.SHOW_ACCEPTED_KEY, String(this.showAccepted()));
       localStorage.setItem(SnowballingComponent.SHOW_REJECTED_KEY, String(this.showRejected()));
-      localStorage.setItem(SnowballingComponent.RESULTS_MODE_KEY, String(this.resultsMode()));
+      localStorage.setItem(SnowballingComponent.SHOW_UNDECIDED_KEY, String(this.showUndecided()));
+      localStorage.setItem(SnowballingComponent.ONLY_ASSIGNED_TO_ME_KEY, String(this.onlyAssignedToMe()));
       localStorage.setItem(SnowballingComponent.SORT_FIELD_KEY, this.sortField());
       const ap = this.activePhase();
       if (ap !== null) {
@@ -241,17 +259,20 @@ export class SnowballingComponent {
   }
 
   private loadFilterPreferences(): void {
-    const showPending = localStorage.getItem(SnowballingComponent.SHOW_PENDING_KEY);
-    if (showPending !== null) this.showPending.set(showPending === 'true');
+    const perspective = localStorage.getItem(SnowballingComponent.PERSPECTIVE_KEY);
+    if (perspective === 'majority') this.perspective.set('majority');
 
-    const showSelected = localStorage.getItem(SnowballingComponent.SHOW_SELECTED_KEY);
-    if (showSelected !== null) this.showSelected.set(showSelected === 'true');
+    const showAccepted = localStorage.getItem(SnowballingComponent.SHOW_ACCEPTED_KEY);
+    if (showAccepted !== null) this.showAccepted.set(showAccepted === 'true');
 
     const showRejected = localStorage.getItem(SnowballingComponent.SHOW_REJECTED_KEY);
     if (showRejected !== null) this.showRejected.set(showRejected === 'true');
 
-    const resultsMode = localStorage.getItem(SnowballingComponent.RESULTS_MODE_KEY);
-    if (resultsMode !== null) this.resultsMode.set(resultsMode === 'true');
+    const showUndecided = localStorage.getItem(SnowballingComponent.SHOW_UNDECIDED_KEY);
+    if (showUndecided !== null) this.showUndecided.set(showUndecided === 'true');
+
+    const onlyAssignedToMe = localStorage.getItem(SnowballingComponent.ONLY_ASSIGNED_TO_ME_KEY);
+    if (onlyAssignedToMe !== null) this.onlyAssignedToMe.set(onlyAssignedToMe === 'true');
 
     const sortField = localStorage.getItem(SnowballingComponent.SORT_FIELD_KEY);
     if (sortField && SORT_FIELDS.includes(sortField as SortField)) {
@@ -320,10 +341,10 @@ export class SnowballingComponent {
     if (this.pendingKeys === 'f') {
       this.pendingKeys = '';
       event.preventDefault();
-      if (event.key === 'a') this.showSelected.update((v) => !v);
-      else if (event.key === 'u') this.showPending.update((v) => !v);
+      if (event.key === 'a') this.showAccepted.update((v) => !v);
+      else if (event.key === 'u') this.showUndecided.update((v) => !v);
       else if (event.key === 'r') this.showRejected.update((v) => !v);
-      else if (event.key === 'f') this.resultsMode.update((v) => !v);
+      else if (event.key === 'f') this.perspective.update((v) => v === 'researcher' ? 'majority' : 'researcher');
       else if (event.key === 's') this.cycleSortField();
       return;
     }
@@ -405,13 +426,6 @@ export class SnowballingComponent {
     }
   }
 
-  setVisibilityMode(mode: VisibilityMode): void {
-    this.visibilityMode.set(mode);
-    this.showSelected.set(mode === 'selected' || mode === 'all');
-    this.showRejected.set(mode === 'rejected' || mode === 'all');
-    this.releaseFilterFocus();
-  }
-
   decisionFor(workId: string): Decision | undefined {
     const me = this.activeResearcherId();
     if (!me) return undefined;
@@ -436,10 +450,53 @@ export class SnowballingComponent {
     return { selected, rejected };
   }
 
+  verdictLabelFor(workId: string): 'accepted' | 'rejected' | 'undecided' {
+    if (this.perspective() === 'majority') {
+      const c = this.consensusFor(workId);
+      if (c === 'accept') return 'accepted';
+      if (c === 'reject') return 'rejected';
+      return 'undecided';
+    }
+    const verdict = this.decisionFor(workId)?.verdict;
+    if (verdict === 'accept') return 'accepted';
+    if (verdict === 'reject') return 'rejected';
+    return 'undecided';
+  }
+
   commentCountFor(workId: string): number {
     return this.decisions().filter((decision) =>
       decision.bib_id === workId && !!decision.note?.trim(),
     ).length;
+  }
+
+  getVoteSummary(workId: string): string {
+    const byResearcher = new Map<string, 'accept' | 'reject'>();
+    for (const decision of this.decisions()) {
+      if (decision.bib_id === workId) {
+        byResearcher.set(decision.researcher_id, decision.verdict);
+      }
+    }
+    if (byResearcher.size === 0) return '';
+    const project = this.project();
+    if (!project) return '';
+    const researchers = project.researchers;
+    const byEmail = new Map(researchers.map((r) => [r.email, r.name]));
+    const accepted: string[] = [];
+    const rejected: string[] = [];
+    for (const [email, verdict] of byResearcher) {
+      const name = byEmail.get(email) ?? email;
+      if (verdict === 'accept') accepted.push(name);
+      else rejected.push(name);
+    }
+    const parts: string[] = [];
+    if (accepted.length) {
+      parts.push(`${accepted.join(' and ')} accepted`);
+    }
+    if (rejected.length) {
+      if (parts.length) parts.push('·');
+      parts.push(`${rejected.join(' and ')} rejected`);
+    }
+    return parts.join(' ');
   }
 
   noteFor(workId: string): string {

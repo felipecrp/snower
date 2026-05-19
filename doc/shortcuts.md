@@ -44,9 +44,9 @@ Snow provides keyboard shortcuts for efficient navigation and paper management. 
 
 | Shortcut | Action |
 |----------|--------|
-| f + a | Toggle show consensus-accepted papers |
-| f + u | Toggle show pending papers |
-| f + r | Toggle show rejected papers |
-| f + f | Toggle results/consensus view |
+| f + a | Toggle accepted chip (show/hide accepted papers) |
+| f + u | Toggle undecided chip (show/hide undecided papers) |
+| f + r | Toggle rejected chip (show/hide rejected papers) |
+| f + f | Toggle perspective (Researcher ↔ Majority) |
 | f + s | Cycle sort field (author → title → venue → criterion) |
 | v + v | Toggle selected paper details |
