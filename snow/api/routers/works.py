@@ -61,7 +61,6 @@ def put_bibtex(
         raise HTTPException(400, detail={"error": "validation", "message": "Entry must have a non-empty title."})
 
     work = bib_module._entry_to_work(entry)
-
     repo.save_work(work)
 
     keys = repo.load_keys()

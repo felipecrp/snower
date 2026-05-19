@@ -118,6 +118,7 @@ class Work(BaseModel):
     """A bibliographic entry as it appears inside a set."""
 
     bib_key: str
+    entry_type: str = "article"
     title: str
     authors: list[str] = Field(default_factory=list)
     year: int | None = None

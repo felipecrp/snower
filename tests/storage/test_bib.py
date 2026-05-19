@@ -123,3 +123,19 @@ class DescribeBibDump:
         bib.dump(works, out)
         text = out.read_text()
         assert "pdf_url = {https://example.com/x.pdf}" in text
+
+    def it_preserves_entry_type_through_dump_and_load(self, tmp_path: Path):
+        works = [Work(bib_key="conf2020", entry_type="inproceedings", title="Conf Paper", authors=["A, A"], year=2020)]
+        out = tmp_path / "out.bib"
+        bib.dump(works, out)
+        reloaded = bib.load(out)
+        assert reloaded[0].entry_type == "inproceedings"
+
+    def it_captures_entry_type_on_load(self, tmp_path: Path):
+        path = tmp_path / "in.bib"
+        path.write_text(SAMPLE_BIB)
+        works = bib.load(path)
+        wohlin = next(w for w in works if w.bib_key == "wohlin2014")
+        kitchenham = next(w for w in works if w.bib_key == "kitchenham2007")
+        assert wohlin.entry_type == "inproceedings"
+        assert kitchenham.entry_type == "article"

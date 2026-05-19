@@ -84,6 +84,22 @@ class DescribePutBibtex:
         body = r.json()
         assert body["detail"]["error"] == "parse"
 
+    def it_preserves_custom_entry_type(self, client: TestClient, bib_key: str, project_dir: Path):
+        custom_bibtex = f"@inproceedings{{{bib_key},\n  title = {{Some Title}},\n  author = {{Smith, John}},\n  year = {{2020}}\n}}\n"
+        r = client.put(f"/api/works/{bib_key}/bibtex", json={"bibtex": custom_bibtex})
+        assert r.status_code == 200
+        assert r.json()["entry_type"] == "inproceedings"
+        raw = ProjectRepo(project_dir).work_path(bib_key).read_text()
+        assert "@inproceedings" in raw
+
+    def it_accepts_nonstandard_entry_type(self, client: TestClient, bib_key: str, project_dir: Path):
+        custom_bibtex = f"@dkdks{{{bib_key},\n  title = {{Some Title}},\n  author = {{Smith, John}},\n  year = {{2020}}\n}}\n"
+        r = client.put(f"/api/works/{bib_key}/bibtex", json={"bibtex": custom_bibtex})
+        assert r.status_code == 200
+        assert r.json()["entry_type"] == "dkdks"
+        raw = ProjectRepo(project_dir).work_path(bib_key).read_text()
+        assert "@dkdks" in raw
+
     def it_overwrites_id_in_payload_to_match_path_bib_key(
         self, client: TestClient, bib_key: str, project_dir: Path
     ):

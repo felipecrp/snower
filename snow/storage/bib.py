@@ -28,10 +28,12 @@ def _entry_to_work(entry: dict[str, str]) -> Work:
     year = int(year_str) if year_str.isdigit() else None
     venue = entry.get("journal") or entry.get("booktitle")
     doi = entry.get("doi") or None
+    entry_type = entry.get("ENTRYTYPE", "article").lower()
     extra = {k: v for k, v in entry.items() if k not in _KNOWN_FIELDS and k not in {"ID", "ENTRYTYPE"}}
 
     return Work(
         bib_key=entry["ID"],
+        entry_type=entry_type,
         title=entry.get("title", "").strip(),
         authors=authors,
         year=year,
@@ -44,9 +46,9 @@ def _entry_to_work(entry: dict[str, str]) -> Work:
     )
 
 
-def _work_to_entry(work: Work, entry_type: str = "article") -> dict[str, str]:
+def _work_to_entry(work: Work) -> dict[str, str]:
     entry: dict[str, str] = {
-        "ENTRYTYPE": entry_type,
+        "ENTRYTYPE": work.entry_type or "article",
         "ID": work.bib_key,
         "title": work.title,
     }
