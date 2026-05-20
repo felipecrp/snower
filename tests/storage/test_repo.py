@@ -141,7 +141,7 @@ class DescribeProjectRepoSets:
             abstract="Abstract from OpenAlex",
         )
 
-        updated = repo.import_bib_to_set("00-start", [enriched])
+        updated, _, _ = repo.import_bib_to_set("00-start", [enriched])
 
         assert len(updated.works) == 1
         assert updated.works[0].doi == "10/a"
@@ -149,6 +149,22 @@ class DescribeProjectRepoSets:
         assert updated.works[0].abstract == "Abstract from OpenAlex"
         decisions, _ = repo.load_decisions("00-start")
         assert decisions[0].bib_key == bk
+
+    def it_returns_added_and_merged_lists(self, tmp_path: Path, project: Project):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        existing = Work(bib_key="", title="Existing", authors=["A, A"], year=2020)
+        repo.import_start_set([existing])
+
+        new_work = Work(bib_key="", title="New", authors=["B, B"], year=2021)
+        reimported = Work(bib_key="", title="Existing", authors=["A, A"], year=2020, doi="10.1/x")
+        updated_set, added, merged = repo.import_bib_to_set("00-start", [new_work, reimported])
+
+        assert len(added) == 1
+        assert added[0].title == "New"
+        assert len(merged) == 1
+        assert merged[0].title == "Existing"
+        assert merged[0].doi == "10.1/x"
 
     def it_rejects_invalid_set_id(self, tmp_path: Path, project: Project):
         repo = ProjectRepo(tmp_path / "proj")
@@ -849,3 +865,25 @@ class DescribeImportUnplacedWork:
         assert match is not None
         assert match.verdict == Verdict.ACCEPT
         assert match.phase_id == "ph1"
+
+
+class DescribeOrphanEviction:
+    def it_removes_work_from_orphan_when_imported_to_regular_set(
+        self, tmp_path: Path, project: Project
+    ):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        work = Work(bib_key="", title="Paper A", authors=["Doe, J"], year=2023, doi="10/a")
+
+        # Stage in orphan first
+        repo.import_unplaced_work(work)
+        orphan = repo.load_set("orphan")
+        assert any(w.title == "Paper A" for w in orphan.works)
+
+        # Now import to start set — should evict from orphan
+        start = repo.load_set("00-start")
+        repo.import_bib_to_set("00-start", orphan.works)
+        orphan_after = repo.load_set("orphan")
+        assert not any(w.title == "Paper A" for w in orphan_after.works)
+        start_after = repo.load_set("00-start")
+        assert any(w.title == "Paper A" for w in start_after.works)

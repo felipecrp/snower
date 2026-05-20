@@ -151,6 +151,9 @@ class ProjectRepo:
     def researchers_dir(self) -> Path:
         return self.root / RESEARCHERS_DIR
 
+    def researcher_log_dir(self) -> Path:
+        return self.root / "researcher"
+
     def researcher_path(self, email: str) -> Path:
         return self.researchers_dir() / f"{email}.yml"
 
@@ -1068,7 +1071,7 @@ class ProjectRepo:
         phases: list[Phase] | None = None,
         researcher_id: str | None = None,
         active_phase: str | None = None,
-    ) -> Set:
+    ) -> tuple[Set, list[Work], list[Work]]:
         """Add works from a BibTeX import to an existing set, deduplicating.
 
         If criteria/phases and researcher_id are provided, creates or updates
@@ -1094,6 +1097,7 @@ class ProjectRepo:
             existing_by_bib_key[w.bib_key] = i
 
         added: list[Work] = []
+        merged_works: list[Work] = []
         for w in new_works:
             ref = _work_ref(w)
             fhash = full_fingerprint(ref)
@@ -1111,6 +1115,7 @@ class ProjectRepo:
                 current = existing.works[existing_index]
                 merged = _fill_missing_work_fields(current, w)
                 existing.works[existing_index] = merged
+                merged_works.append(merged)
                 merged_ref = _work_ref(merged)
                 existing_by_full[full_fingerprint(merged_ref)] = existing_index
                 existing_by_short[short_fingerprint(merged_ref)] = existing_index
@@ -1127,6 +1132,10 @@ class ProjectRepo:
                 existing_by_bib_key[w.bib_key] = new_index
         self.save_set(existing)
 
+        # Remove newly imported works from the orphan set if they landed there before.
+        if _SET_DIR_PATTERN.match(set_id):
+            self._evict_from_orphan(new_works)
+
         if researcher_id and (criteria or phases):
             # Reload to get finalized bib_keys after _renormalize_keys ran in save_set.
             final_set = self.load_set(set_id)
@@ -1135,7 +1144,36 @@ class ProjectRepo:
                 set_id, new_works, final_by_full, criteria, phases, researcher_id, active_phase
             )
 
-        return self.load_set(set_id)
+        return self.load_set(set_id), added, merged_works
+
+    def _evict_from_orphan(self, works: list[Work]) -> None:
+        """Remove works from the orphan set if they are present there."""
+        try:
+            orphan = self.load_set("orphan")
+        except FileNotFoundError:
+            return
+        if not orphan.works:
+            return
+
+        remove_keys: set[str] = set()
+        remove_full: set[str] = set()
+        remove_doi: set[str] = set()
+        for w in works:
+            if w.bib_key:
+                remove_keys.add(w.bib_key)
+            remove_full.add(full_fingerprint(_work_ref(w)))
+            if doi := _normalized_doi(w):
+                remove_doi.add(doi)
+
+        kept = [
+            w for w in orphan.works
+            if w.bib_key not in remove_keys
+            and full_fingerprint(_work_ref(w)) not in remove_full
+            and (_normalized_doi(w) not in remove_doi if _normalized_doi(w) else True)
+        ]
+        if len(kept) < len(orphan.works):
+            orphan.works = kept
+            self.save_set(orphan)
 
     def import_unplaced_work(
         self,
@@ -1244,6 +1282,7 @@ class ProjectRepo:
         self.works_dir().mkdir(parents=True, exist_ok=True)
         self.relations_dir().mkdir(parents=True, exist_ok=True)
         self.researchers_dir().mkdir(parents=True, exist_ok=True)
+        self.researcher_log_dir().mkdir(parents=True, exist_ok=True)
         if not self.set_dir("00-start").root.exists():
             self.save_set(Set(id="00-start", kind=SetKind.START, iteration=0, works=[]))
 

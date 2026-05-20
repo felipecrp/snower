@@ -73,12 +73,6 @@ def _configure_logging(project_root: Path | None) -> None:
     stream.setFormatter(fmt)
     snow_logger.addHandler(stream)
 
-    if project_root is not None:
-        log_file = project_root / "snow.log"
-        file_handler = logging.FileHandler(log_file, encoding="utf-8")
-        file_handler.setFormatter(fmt)
-        snow_logger.addHandler(file_handler)
-
 
 @app.command()
 def serve(

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Uplo
 from snow.api.state import get_repo
 from snow.domain.models import Set, Work
 from snow.providers.factory import get_enrichment_provider
+from snow.researcher_log import get_researcher_logger
 from snow.storage import bib, tabular
 from snow.storage.repo import ProjectRepo
 
@@ -55,13 +56,34 @@ async def import_bib(
         tmp_path.unlink(missing_ok=True)
     works = repo.merge_with_library(works)
     project = repo.load_project()
+    works_before = {w.title: dict(doi=w.doi, venue=w.venue, abstract=w.abstract, url=w.url) for w in works}
     works = get_enrichment_provider(project, email=x_researcher_id).enrich_works(works)
     criteria = project.criteria if x_researcher_id else None
     phases = project.phases if x_researcher_id else None
     try:
-        return repo.import_bib_to_set(set_id, works, criteria=criteria, phases=phases, researcher_id=x_researcher_id)
+        updated_set, added, merged = repo.import_bib_to_set(
+            set_id, works, criteria=criteria, phases=phases, researcher_id=x_researcher_id,
+        )
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+    if x_researcher_id:
+        enriched_count = sum(
+            1 for w in works
+            for field in ("doi", "venue", "abstract", "url")
+            if getattr(w, field) and not works_before.get(w.title, {}).get(field)
+        )
+        rlog = get_researcher_logger(repo.root, x_researcher_id)
+        rlog.info(
+            "Import into %s: %d parsed, %d new, %d merged, %d fields enriched",
+            set_id, len(works), len(added), len(merged), enriched_count,
+        )
+        for w in added:
+            rlog.info("Added %s", w.bib_key or w.title)
+        for w in merged:
+            rlog.info("Merged %s", w.bib_key or w.title)
+
+    return updated_set
 
 
 @router.post("/{set_id}/parse-bib", response_model=list[Work])
@@ -140,7 +162,7 @@ async def import_work(
     if enrich:
         works = get_enrichment_provider(project, email=x_researcher_id).enrich_works(works)
     try:
-        updated_set = repo.import_bib_to_set(
+        updated_set, _, _ = repo.import_bib_to_set(
             set_id, works, criteria=criteria, phases=phases,
             researcher_id=x_researcher_id, active_phase=x_active_phase,
         )

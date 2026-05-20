@@ -88,3 +88,21 @@ class DescribeParseInvalidFormat:
     def it_raises_on_unknown_format(self):
         with pytest.raises(ValueError, match="Unknown import format"):
             parse("data", "xml")
+
+
+class DescribeDOIValidation:
+    def it_raises_on_invalid_doi_format(self):
+        with pytest.raises(ValueError, match="invalid DOI format"):
+            parse("not-a-doi\n", "csv-doi")
+
+    def it_includes_row_number_in_error(self):
+        with pytest.raises(ValueError, match="Row 2"):
+            parse("10.1234/valid\nbad-doi\n", "csv-doi")
+
+    def it_accepts_doi_with_slash(self):
+        works = parse("10.1234/some-suffix\n", "csv-doi")
+        assert works[0].doi == "10.1234/some-suffix"
+
+    def it_accepts_doi_with_dot_separator(self):
+        works = parse("10.1234.some-suffix\n", "csv-doi")
+        assert works[0].doi == "10.1234.some-suffix"

@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 
 from snow.domain.models import Work
@@ -19,6 +20,13 @@ SAMPLE_BIB = """
     journal = {Keele University}
 }
 """
+
+
+class DescribeBibLoads:
+    def it_raises_on_malformed_bibtex(self):
+        malformed = "@article{broken, title = {No closing brace\n"
+        with pytest.raises(ValueError, match="parse error"):
+            bib.loads(malformed)
 
 
 class DescribeBibLoad:
@@ -139,3 +147,16 @@ class DescribeBibDump:
         kitchenham = next(w for w in works if w.bib_key == "kitchenham2007")
         assert wohlin.entry_type == "inproceedings"
         assert kitchenham.entry_type == "article"
+
+    def it_strips_doi_url_prefix_on_load(self, tmp_path: Path):
+        path = tmp_path / "in.bib"
+        path.write_text("""
+@article{test2020,
+    author = {Doe, J},
+    title = {Test},
+    year = {2020},
+    doi = {https://doi.org/10.1145/146628.139676}
+}
+""")
+        works = bib.load(path)
+        assert works[0].doi == "10.1145/146628.139676"

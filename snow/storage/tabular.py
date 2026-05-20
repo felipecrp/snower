@@ -27,27 +27,30 @@ def parse(text: str, fmt: str) -> list[Work]:
 
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
     works: list[Work] = []
-    for row in reader:
+    for row_num, row in enumerate(reader, start=1):
         if not any(cell.strip() for cell in row):
             continue
-        work = _row_to_work([c.strip() for c in row], mode)
+        work = _row_to_work([c.strip() for c in row], mode, row_num)
         if work is not None:
             works.append(work)
     return works
 
 
 _DOI_URL_PREFIX = re.compile(r"^https?://(?:dx\.)?doi\.org/", re.IGNORECASE)
+_DOI_PATTERN = re.compile(r"^10\.\d{4,}[/.]")
 
 
 def _normalize_doi_input(value: str) -> str:
     return _DOI_URL_PREFIX.sub("", value).strip()
 
 
-def _row_to_work(row: list[str], mode: str) -> Work | None:
+def _row_to_work(row: list[str], mode: str, row_num: int = 0) -> Work | None:
     if mode == "doi":
         doi = _normalize_doi_input(row[0]) if row else ""
         if not doi:
             return None
+        if not _DOI_PATTERN.match(doi):
+            raise ValueError(f"Row {row_num}: invalid DOI format: {doi!r}")
         decision = row[1] if len(row) > 1 else ""
         phase = row[2] if len(row) > 2 else ""
         extra = _groups_extra(decision, phase)

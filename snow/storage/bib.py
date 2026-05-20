@@ -5,6 +5,7 @@ Converts between on-disk `.bib` files and the `Work` domain model.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import bibtexparser
@@ -17,6 +18,8 @@ from snow.domain.models import Work
 
 _KNOWN_FIELDS = {"title", "author", "year", "journal", "booktitle", "doi", "url", "pdf_url", "abstract"}
 _PROCEEDINGS_TYPES = {"inproceedings", "incollection", "conference"}
+_DOI_URL_PREFIX = re.compile(r"^https?://(?:dx\.)?doi\.org/", re.IGNORECASE)
+_ENTRY_COMMENT = re.compile(r"^@\w+\s*\{", re.IGNORECASE)
 
 
 def _split_authors(raw: str) -> list[str]:
@@ -28,7 +31,8 @@ def _entry_to_work(entry: dict[str, str]) -> Work:
     year_str = entry.get("year", "").strip()
     year = int(year_str) if year_str.isdigit() else None
     venue = entry.get("journal") or entry.get("booktitle")
-    doi = entry.get("doi") or None
+    raw_doi = entry.get("doi") or None
+    doi = _DOI_URL_PREFIX.sub("", raw_doi).strip() if raw_doi else None
     entry_type = entry.get("ENTRYTYPE", "article").lower()
     extra = {k: v for k, v in entry.items() if k not in _KNOWN_FIELDS and k not in {"ID", "ENTRYTYPE"}}
 
@@ -74,11 +78,18 @@ def _work_to_entry(work: Work) -> dict[str, str]:
     return entry
 
 
+def _check_failed_blocks(db: BibDatabase) -> None:
+    failed = [c for c in db.comments if _ENTRY_COMMENT.match(c)]
+    if failed:
+        raise ValueError(f"BibTeX parse error: {len(failed)} block(s) could not be parsed")
+
+
 def loads(text: str) -> list[Work]:
     parser = BibTexParser(common_strings=True)
     parser.ignore_nonstandard_types = False
     parser.customization = convert_to_unicode
     db = bibtexparser.loads(text, parser=parser)
+    _check_failed_blocks(db)
     return [_entry_to_work(e) for e in db.entries]
 
 
@@ -90,6 +101,7 @@ def load(path: Path) -> list[Work]:
     parser.customization = convert_to_unicode
     with path.open("r", encoding="utf-8") as f:
         db = bibtexparser.load(f, parser=parser)
+    _check_failed_blocks(db)
     return [_entry_to_work(e) for e in db.entries]
 
 
