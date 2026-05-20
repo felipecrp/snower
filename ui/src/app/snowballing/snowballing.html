@@ -45,15 +45,8 @@
       </div>
     </div>
     <div class="sets-footer">
-      <input
-        id="bib-import-input"
-        type="file"
-        accept=".bib"
-        style="display:none"
-        (change)="onBibFileSelected($event)"
-      />
-      <button class="import-btn" (click)="triggerBibImport()" [disabled]="importing()">
-        {{ importing() ? 'Importing…' : 'Import start set' }}
+      <button class="import-btn" (click)="openImportDialog()" [disabled]="importing()">
+        {{ importing() ? 'Importing…' : 'Import' }}
       </button>
       <button class="import-btn" (click)="runBidding()" [disabled]="biddingRunning()">
         {{ biddingRunning() ? 'Running…' : 'Bidding' }}
@@ -414,6 +407,91 @@
     <footer>
       <button type="button" (click)="closeBibtexDialog()">Cancel</button>
       <button type="button" (click)="saveBibtex()" [disabled]="bibtexSaving()">Save</button>
+    </footer>
+  </section>
+</div>
+
+<div
+  class="dialog-backdrop"
+  *ngIf="importDialogOpen()"
+>
+  <section class="bibtex-dialog import-dialog" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+    <header>
+      <strong>Import works</strong>
+      <button type="button" (click)="closeImportDialog()">x</button>
+    </header>
+
+    <div class="import-source">
+      <label>
+        File
+        <input
+          type="file"
+          accept=".bib,.csv,.tsv,.txt"
+          (change)="onImportFileSelected($event)"
+          [disabled]="importing()"
+        />
+      </label>
+      <span class="import-or">or paste text</span>
+      <textarea
+        rows="8"
+        placeholder="Paste BibTeX, CSV, or TSV here…"
+        [ngModel]="importText()"
+        (ngModelChange)="importText.set($event)"
+        (keydown.escape)="closeImportDialog(); $event.preventDefault()"
+        [disabled]="importing()"
+      ></textarea>
+    </div>
+
+    <div class="import-options">
+      <label>
+        Format
+        <select [ngModel]="importFormat()" (ngModelChange)="importFormat.set($event)" [disabled]="importing()">
+          <option value="bib">BibTeX</option>
+          <option value="csv-doi">CSV — DOI</option>
+          <option value="csv-meta">CSV — title, authors, year</option>
+          <option value="tsv-doi">TSV — DOI</option>
+          <option value="tsv-meta">TSV — title, authors, year</option>
+        </select>
+      </label>
+
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          [ngModel]="importToStart()"
+          (ngModelChange)="importToStart.set($event)"
+          [disabled]="importing()"
+        />
+        Import to start set
+      </label>
+
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          [ngModel]="importEnrich()"
+          (ngModelChange)="importEnrich.set($event)"
+          [disabled]="importing()"
+        />
+        Enrich via OpenAlex
+      </label>
+    </div>
+
+    <div *ngIf="pendingWorks().length" class="import-progress">
+      <div *ngFor="let item of pendingWorks()" class="import-progress-item" [class]="'status-' + item.status">
+        <span class="status-icon">
+          {{ item.status === 'done' ? '✓' : item.status === 'error' ? '✗' : item.status === 'importing' ? '…' : '·' }}
+        </span>
+        <span class="work-title">{{ item.work.title || item.work.doi || item.work.bib_key || '(untitled)' }}</span>
+        <span *ngIf="item.error" class="item-error">{{ item.error }}</span>
+      </div>
+    </div>
+
+    <p class="bibtex-error" *ngIf="error() as err">{{ err }}</p>
+
+    <footer>
+      <button type="button" (click)="closeImportDialog()" [disabled]="importing()">Cancel</button>
+      <button type="button" (click)="startImport()" [disabled]="importing() || !importText().trim()">
+        {{ importing() ? 'Importing…' : 'Import' }}
+      </button>
     </footer>
   </section>
 </div>

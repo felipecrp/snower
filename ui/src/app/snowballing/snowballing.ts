@@ -68,6 +68,13 @@ export class SnowballingComponent {
   readonly bibtexError = signal<string | null>(null);
   readonly bibtexSaving = signal<boolean>(false);
 
+  // Import dialog state
+  readonly importDialogOpen = signal(false);
+  readonly importText = signal('');
+  readonly importFormat = signal<string>('bib');
+  readonly importToStart = signal(true);
+  readonly importEnrich = signal(true);
+
   private pendingKeys = '';
 
   private classifyWork(workId: string): 'accept' | 'reject' | 'undecided' {
@@ -785,56 +792,107 @@ export class SnowballingComponent {
     });
   }
 
-  triggerBibImport(): void {
-    document.getElementById('bib-import-input')?.click();
+  openImportDialog(): void {
+    this.importDialogOpen.set(true);
+    this.importText.set('');
+    this.importFormat.set('bib');
+    this.importToStart.set(true);
+    this.importEnrich.set(true);
+    this.error.set(null);
   }
 
-  onBibFileSelected(event: Event): void {
+  closeImportDialog(): void {
+    if (!this.importing()) {
+      this.importDialogOpen.set(false);
+    }
+  }
+
+  onImportFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
+    file.text().then((text) => {
+      this.importText.set(text);
+      // Auto-detect format from extension
+      const name = file.name.toLowerCase();
+      if (name.endsWith('.bib')) this.importFormat.set('bib');
+      else if (name.endsWith('.csv')) this.importFormat.set('csv-doi');
+      else if (name.endsWith('.tsv')) this.importFormat.set('tsv-doi');
+    });
+    input.value = '';
+  }
+
+  startImport(): void {
+    const text = this.importText().trim();
+    if (!text) return;
+    const toStart = this.importToStart();
+    const targetSetId = toStart ? '00-start' : 'orphan';
+    const parseSetId = toStart ? '00-start' : (this.projectSvc.sets().find((s) => s.id === '00-start') ? '00-start' : this.projectSvc.sets()[0]?.id ?? '00-start');
+
     this.importing.set(true);
     this.error.set(null);
     this.pendingWorks.set([]);
-    input.value = '';
 
-    this.projectSvc.markSetsPending(['00-start']);
-    const startSet = this.projectSvc.sets().find((s) => s.id === '00-start');
-    if (startSet && this.currentSet()?.id !== '00-start') {
-      this.selectSet(startSet);
+    if (toStart) {
+      const startSet = this.projectSvc.sets().find((s) => s.id === '00-start');
+      if (startSet) {
+        this.projectSvc.markSetsPending(['00-start']);
+        if (this.currentSet()?.id !== '00-start') this.selectSet(startSet);
+      }
     }
-    this.api.parseBib('00-start', file).subscribe({
+
+    this.api.parseImport(parseSetId, text, this.importFormat()).subscribe({
       next: (works) => {
         this.pendingWorks.set(works.map((w) => ({ work: w, status: 'pending' })));
-        this.importNextWork(0);
+        this.importNextWork(0, targetSetId);
       },
       error: (e) => {
         this.error.set(`Parse failed: ${e.error?.detail ?? e.message}`);
         this.importing.set(false);
-        this.projectSvc.clearSetsPending(['00-start']);
+        if (toStart) this.projectSvc.clearSetsPending(['00-start']);
       },
     });
   }
 
-  private importNextWork(index: number): void {
+  private importNextWork(index: number, targetSetId: string): void {
     const pending = this.pendingWorks();
+    const toStart = targetSetId === '00-start';
+
     if (index >= pending.length) {
-      this.api.getSet('00-start').subscribe({
-        next: (updatedSet) => {
-          this.projectSvc.sets.update((all) =>
-            all.map((s) => (s.id === '00-start' ? updatedSet : s)),
-          );
-          this.importing.set(false);
-          this.projectSvc.clearSetsPending(['00-start']);
-          this.pendingWorks.set([]);
-          this.selectSet(updatedSet);
-        },
-        error: () => {
-          this.importing.set(false);
-          this.projectSvc.clearSetsPending(['00-start']);
-          this.pendingWorks.set([]);
-        },
-      });
+      const done = (updatedSet: ReviewSet) => {
+        this.projectSvc.sets.update((all) => {
+          const exists = all.some((s) => s.id === updatedSet.id);
+          return exists
+            ? all.map((s) => (s.id === updatedSet.id ? updatedSet : s))
+            : [...all, updatedSet];
+        });
+        this.importing.set(false);
+        if (toStart) this.projectSvc.clearSetsPending(['00-start']);
+        this.pendingWorks.set([]);
+        this.importDialogOpen.set(false);
+        this.selectSet(updatedSet);
+      };
+
+      const abort = () => {
+        this.importing.set(false);
+        if (toStart) this.projectSvc.clearSetsPending(['00-start']);
+        this.pendingWorks.set([]);
+        this.importDialogOpen.set(false);
+      };
+
+      if (!toStart) {
+        this.api.recalculateOrphans().subscribe({
+          next: (sets) => {
+            // sets is the full list — replace to pick up newly created sets (e.g. orphan)
+            this.projectSvc.sets.set(sets);
+            const orphan = sets.find((s) => s.id === 'orphan');
+            if (orphan) { done(orphan); } else { abort(); }
+          },
+          error: () => abort(),
+        });
+      } else {
+        this.api.getSet('00-start').subscribe({ next: done, error: abort });
+      }
       return;
     }
 
@@ -842,7 +900,11 @@ export class SnowballingComponent {
       all.map((item, i) => (i === index ? { ...item, status: 'importing' } : item)),
     );
 
-    this.api.importWork('00-start', pending[index].work).subscribe({
+    const opts = {
+      enrich: this.importEnrich(),
+      activePhase: this.activePhase(),
+    };
+    this.api.importWork(targetSetId, pending[index].work, opts).subscribe({
       next: (importedWork) => {
         const mergeWork = (works: Work[]): Work[] => {
           const idx = works.findIndex((w) => w.bib_key === importedWork.bib_key);
@@ -851,15 +913,15 @@ export class SnowballingComponent {
             : [...works, importedWork];
         };
         this.projectSvc.sets.update((all) =>
-          all.map((s) => (s.id === '00-start' ? { ...s, works: mergeWork(s.works) } : s)),
+          all.map((s) => (s.id === targetSetId ? { ...s, works: mergeWork(s.works) } : s)),
         );
         this.currentSet.update((cs) =>
-          cs && cs.id === '00-start' ? { ...cs, works: mergeWork(cs.works) } : cs,
+          cs && cs.id === targetSetId ? { ...cs, works: mergeWork(cs.works) } : cs,
         );
         this.pendingWorks.update((all) =>
           all.map((item, i) => (i === index ? { ...item, status: 'done' } : item)),
         );
-        this.importNextWork(index + 1);
+        this.importNextWork(index + 1, targetSetId);
       },
       error: (e) => {
         this.pendingWorks.update((all) =>
@@ -869,7 +931,7 @@ export class SnowballingComponent {
               : item,
           ),
         );
-        this.importNextWork(index + 1);
+        this.importNextWork(index + 1, targetSetId);
       },
     });
   }

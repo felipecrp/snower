@@ -995,6 +995,71 @@ class ProjectRepo:
         it, kind = candidates[0]
         return f"{it:02d}-{kind}", SetKind(kind), it
 
+    def _apply_group_decisions(
+        self,
+        set_id: str,
+        works: list[Work],
+        final_by_full: dict[str, str],
+        criteria: list[Criterion] | None,
+        phases: list[Phase] | None,
+        researcher_id: str,
+        active_phase: str | None = None,
+    ) -> None:
+        """Create/update decisions for works whose `groups` field matches a criterion or phase."""
+        now = datetime.now(timezone.utc)
+
+        if criteria:
+            criterion_by_id = {c.id: c for c in criteria}
+            for w in works:
+                groups_raw = w.extra.get("groups", "")
+                groups = [g.strip() for g in groups_raw.split(",") if g.strip()]
+                for group in groups:
+                    if group in criterion_by_id:
+                        c = criterion_by_id[group]
+                        verdict = Verdict.ACCEPT if c.kind == "include" else Verdict.REJECT
+                        final_bib_key = final_by_full.get(full_fingerprint(_work_ref(w)), w.bib_key)
+                        existing_decisions, _ = self.load_decisions(set_id)
+                        existing_phase_id = next(
+                            (d.phase_id for d in existing_decisions
+                             if d.bib_key == final_bib_key and d.researcher_id == researcher_id),
+                            None,
+                        )
+                        decision = Decision(
+                            bib_key=final_bib_key,
+                            researcher_id=researcher_id,
+                            verdict=verdict,
+                            criterion_id=c.id,
+                            phase_id=existing_phase_id,
+                            note=None,
+                            decided_at=now,
+                        )
+                        self.save_researcher_decision(set_id, decision)
+                        break
+
+        if phases:
+            phase_by_id = {p.id: p for p in phases}
+            current_decisions, _ = self.load_decisions(set_id)
+            decisions_by_bib_key = {
+                d.bib_key: d for d in current_decisions if d.researcher_id == researcher_id
+            }
+            for w in works:
+                groups_raw = w.extra.get("groups", "")
+                groups = [g.strip() for g in groups_raw.split(",") if g.strip()]
+                matched_phase_id: str | None = None
+                for group in groups:
+                    if group in phase_by_id:
+                        matched_phase_id = phase_by_id[group].id
+                        break
+                if not matched_phase_id:
+                    matched_phase_id = active_phase
+                if not matched_phase_id:
+                    continue
+                final_bib_key = final_by_full.get(full_fingerprint(_work_ref(w)), w.bib_key)
+                existing = decisions_by_bib_key.get(final_bib_key)
+                if existing:
+                    updated = existing.model_copy(update={"phase_id": matched_phase_id})
+                    self.save_researcher_decision(set_id, updated)
+
     def import_bib_to_set(
         self,
         set_id: str,
@@ -1002,6 +1067,7 @@ class ProjectRepo:
         criteria: list[Criterion] | None = None,
         phases: list[Phase] | None = None,
         researcher_id: str | None = None,
+        active_phase: str | None = None,
     ) -> Set:
         """Add works from a BibTeX import to an existing set, deduplicating.
 
@@ -1062,64 +1128,106 @@ class ProjectRepo:
         self.save_set(existing)
 
         if researcher_id and (criteria or phases):
-            now = datetime.now(timezone.utc)
             # Reload to get finalized bib_keys after _renormalize_keys ran in save_set.
             final_set = self.load_set(set_id)
             final_by_full = {full_fingerprint(_work_ref(w)): w.bib_key for w in final_set.works}
-
-            if criteria:
-                criterion_by_id = {c.id: c for c in criteria}
-                for w in new_works:
-                    groups_raw = w.extra.get("groups", "")
-                    groups = [g.strip() for g in groups_raw.split(",") if g.strip()]
-                    for group in groups:
-                        if group in criterion_by_id:
-                            c = criterion_by_id[group]
-                            verdict = Verdict.ACCEPT if c.kind == "include" else Verdict.REJECT
-                            final_bib_key = final_by_full.get(full_fingerprint(_work_ref(w)), w.bib_key)
-                            # Preserve existing phase_id if any decision already exists
-                            existing_decisions, _ = self.load_decisions(set_id)
-                            existing_phase_id = next(
-                                (d.phase_id for d in existing_decisions
-                                 if d.bib_key == final_bib_key and d.researcher_id == researcher_id),
-                                None,
-                            )
-                            decision = Decision(
-                                bib_key=final_bib_key,
-                                researcher_id=researcher_id,
-                                verdict=verdict,
-                                criterion_id=c.id,
-                                phase_id=existing_phase_id,
-                                note=None,
-                                decided_at=now,
-                            )
-                            self.save_researcher_decision(set_id, decision)
-                            break
-
-            if phases:
-                phase_by_id = {p.id: p for p in phases}
-                # Re-read decisions after the criteria loop may have written some
-                current_decisions, _ = self.load_decisions(set_id)
-                decisions_by_bib_key = {
-                    d.bib_key: d for d in current_decisions if d.researcher_id == researcher_id
-                }
-                for w in new_works:
-                    groups_raw = w.extra.get("groups", "")
-                    groups = [g.strip() for g in groups_raw.split(",") if g.strip()]
-                    matched_phase_id: str | None = None
-                    for group in groups:
-                        if group in phase_by_id:
-                            matched_phase_id = phase_by_id[group].id
-                            break
-                    if not matched_phase_id:
-                        continue
-                    final_bib_key = final_by_full.get(full_fingerprint(_work_ref(w)), w.bib_key)
-                    existing = decisions_by_bib_key.get(final_bib_key)
-                    if existing:
-                        updated = existing.model_copy(update={"phase_id": matched_phase_id})
-                        self.save_researcher_decision(set_id, updated)
+            self._apply_group_decisions(
+                set_id, new_works, final_by_full, criteria, phases, researcher_id, active_phase
+            )
 
         return self.load_set(set_id)
+
+    def import_unplaced_work(
+        self,
+        work: Work,
+        criteria: list[Criterion] | None = None,
+        phases: list[Phase] | None = None,
+        researcher_id: str | None = None,
+        active_phase: str | None = None,
+    ) -> Work:
+        """Import a work without a predetermined target set.
+
+        The work is saved to the library. If it already exists in a regular set,
+        decisions are applied there. Otherwise it is added to the orphan set.
+        Does NOT call recalculate_orphans (callers do that after the full batch).
+        """
+        [merged] = self.merge_with_library([work])
+
+        regular_ids = [sid for sid in self.list_set_ids() if _SET_DIR_PATTERN.match(sid)]
+        found_set_id: str | None = None
+        for sid in regular_ids:
+            s = self.load_set(sid)
+            if any(w.bib_key == merged.bib_key for w in s.works):
+                found_set_id = sid
+                break
+
+        if found_set_id is None:
+            # Also check by fingerprint in case bib_key isn't assigned yet
+            ref = _work_ref(merged)
+            fhash = full_fingerprint(ref)
+            shash = short_fingerprint(ref)
+            doi_norm = _normalized_doi(merged)
+            for sid in regular_ids:
+                s = self.load_set(sid)
+                for w in s.works:
+                    wr = _work_ref(w)
+                    if (full_fingerprint(wr) == fhash
+                            or short_fingerprint(wr) == shash
+                            or (doi_norm and _normalized_doi(w) == doi_norm)):
+                        found_set_id = sid
+                        merged = _fill_missing_work_fields(w, merged)
+                        break
+                if found_set_id:
+                    break
+
+        if found_set_id:
+            # Update the existing work in the regular set
+            target_set = self.load_set(found_set_id)
+            for i, w in enumerate(target_set.works):
+                if w.bib_key == merged.bib_key:
+                    target_set.works[i] = _fill_missing_work_fields(w, merged)
+                    merged = target_set.works[i]
+                    break
+            self.save_set(target_set)
+            if researcher_id and (criteria or phases):
+                final_by_full = {full_fingerprint(_work_ref(w)): w.bib_key for w in target_set.works}
+                self._apply_group_decisions(
+                    found_set_id, [merged], final_by_full, criteria, phases, researcher_id, active_phase
+                )
+        else:
+            # Stage as orphan
+            orphan_id = "orphan"
+            try:
+                orphan_set = self.load_set(orphan_id)
+            except FileNotFoundError:
+                orphan_set = Set(id=orphan_id, kind=SetKind.ORPHAN, iteration=0, works=[])
+
+            # Deduplicate within the orphan set
+            ref = _work_ref(merged)
+            fhash = full_fingerprint(ref)
+            doi_norm = _normalized_doi(merged)
+            existing_index: int | None = None
+            for i, w in enumerate(orphan_set.works):
+                wr = _work_ref(w)
+                if (full_fingerprint(wr) == fhash
+                        or (doi_norm and _normalized_doi(w) == doi_norm)):
+                    existing_index = i
+                    break
+            if existing_index is not None:
+                orphan_set.works[existing_index] = _fill_missing_work_fields(orphan_set.works[existing_index], merged)
+                merged = orphan_set.works[existing_index]
+            else:
+                orphan_set.works.append(merged)
+            self.save_set(orphan_set)
+
+            if researcher_id and (criteria or phases):
+                reloaded = self.load_set(orphan_id)
+                final_by_full = {full_fingerprint(_work_ref(w)): w.bib_key for w in reloaded.works}
+                self._apply_group_decisions(
+                    orphan_id, [merged], final_by_full, criteria, phases, researcher_id, active_phase
+                )
+
+        return self.load_work(merged.bib_key) or merged
 
     # --- bootstrap ------------------------------------------------------
 

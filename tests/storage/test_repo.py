@@ -781,3 +781,71 @@ class Describe_bidding_storage:
         repo.save_researcher(Researcher(email="bob@example.com", name="Bob", assignment_percentage=60))
         loaded = repo.list_researchers()
         assert loaded[0].assignment_percentage == 60
+
+
+class DescribeImportUnplacedWork:
+    def it_adds_new_paper_to_orphan_set(self, tmp_path: Path, project: Project):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        work = Work(bib_key="", title="New Paper", authors=["Doe, J"], year=2024)
+        repo.import_unplaced_work(work)
+        orphan = repo.load_set("orphan")
+        assert any(w.title == "New Paper" for w in orphan.works)
+
+    def it_updates_existing_paper_in_regular_set_instead_of_duplicating(
+        self, tmp_path: Path, project: Project, sample_works: list[Work]
+    ):
+        repo = ProjectRepo(tmp_path / "proj")
+        repo.init(project)
+        repo.import_start_set(sample_works)
+        start = repo.load_set("00-start")
+        existing = start.works[0]
+
+        updated = Work(
+            bib_key=existing.bib_key,
+            title=existing.title,
+            authors=existing.authors,
+            year=existing.year,
+            doi=existing.doi,
+            abstract="new abstract",
+        )
+        repo.import_unplaced_work(updated)
+
+        # Should NOT appear in orphan set
+        try:
+            orphan = repo.load_set("orphan")
+            assert not any(w.bib_key == existing.bib_key for w in orphan.works)
+        except FileNotFoundError:
+            pass  # orphan set not created — also fine
+
+    def it_applies_group_decisions_using_active_phase_fallback(
+        self, tmp_path: Path, project: Project
+    ):
+        repo = ProjectRepo(tmp_path / "proj")
+        project_with_phases = project.model_copy(update={
+            "phases": [Phase(id="ph1", description="Phase 1")],
+        })
+        repo.init(project_with_phases)
+
+        work = Work(
+            bib_key="",
+            title="Empirical Study",
+            authors=["Doe, J"],
+            year=2023,
+            extra={"groups": "c1"},  # matches criterion but no phase in groups
+        )
+        repo.import_unplaced_work(
+            work,
+            criteria=project_with_phases.criteria,
+            phases=project_with_phases.phases,
+            researcher_id="alice@example.com",
+            active_phase="ph1",
+        )
+
+        orphan = repo.load_set("orphan")
+        bib_key = orphan.works[0].bib_key
+        decisions, _ = repo.load_decisions("orphan")
+        match = next((d for d in decisions if d.bib_key == bib_key), None)
+        assert match is not None
+        assert match.verdict == Verdict.ACCEPT
+        assert match.phase_id == "ph1"

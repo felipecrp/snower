@@ -85,10 +85,23 @@ export class ApiService {
     return this.http.post<Work[]>(`/api/sets/${setId}/parse-bib`, form);
   }
 
-  importWork(setId: string, work: Work): Observable<Work> {
-    return this.http.post<Work>(`/api/sets/${setId}/import-work`, work, {
-      headers: this.researcherHeaders(),
-    });
+  parseImport(setId: string, text: string, format: string): Observable<Work[]> {
+    return this.http.post<Work[]>(`/api/sets/${setId}/parse`, { text, format });
+  }
+
+  importWork(
+    setId: string,
+    work: Work,
+    opts?: { enrich?: boolean; activePhase?: string | null },
+  ): Observable<Work> {
+    let headers = this.researcherHeaders();
+    if (opts?.activePhase) headers = headers.set('X-Active-Phase', opts.activePhase);
+    const enrich = opts?.enrich ?? true;
+    return this.http.post<Work>(
+      `/api/sets/${setId}/import-work?enrich=${enrich}`,
+      work,
+      { headers },
+    );
   }
 
   getWorkBibtex(bibKey: string): Observable<{ bibtex: string }> {

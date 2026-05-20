@@ -16,6 +16,7 @@ from bibtexparser.customization import convert_to_unicode
 from snow.domain.models import Work
 
 _KNOWN_FIELDS = {"title", "author", "year", "journal", "booktitle", "doi", "url", "pdf_url", "abstract"}
+_PROCEEDINGS_TYPES = {"inproceedings", "incollection", "conference"}
 
 
 def _split_authors(raw: str) -> list[str]:
@@ -57,7 +58,10 @@ def _work_to_entry(work: Work) -> dict[str, str]:
     if work.year is not None:
         entry["year"] = str(work.year)
     if work.venue:
-        entry["journal"] = work.venue
+        if (work.entry_type or "article").lower() in _PROCEEDINGS_TYPES:
+            entry["booktitle"] = work.venue
+        else:
+            entry["journal"] = work.venue
     if work.doi:
         entry["doi"] = work.doi
     if work.url:
@@ -68,6 +72,14 @@ def _work_to_entry(work: Work) -> dict[str, str]:
         entry["abstract"] = work.abstract
     entry.update(work.extra)
     return entry
+
+
+def loads(text: str) -> list[Work]:
+    parser = BibTexParser(common_strings=True)
+    parser.ignore_nonstandard_types = False
+    parser.customization = convert_to_unicode
+    db = bibtexparser.loads(text, parser=parser)
+    return [_entry_to_work(e) for e in db.entries]
 
 
 def load(path: Path) -> list[Work]:
