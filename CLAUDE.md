@@ -6,7 +6,7 @@ git. The server runs on `127.0.0.1`; no data leaves the machine.
 
 ## Instructions
 
-- Ask permission before spawning agents and confirm model
+- Ask permission before spawning agents
 - On commit, do not add coauthor
 
 ## Stack
