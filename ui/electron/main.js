@@ -1,5 +1,5 @@
 const path = require('path');
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, screen, shell } = require('electron');
 
 if (process.env.SNOW_USER_DATA_DIR) {
   app.setPath('userData', process.env.SNOW_USER_DATA_DIR);
@@ -31,7 +31,16 @@ ipcMain.on('window-minimize', (event) => {
 ipcMain.on('window-maximize-toggle', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win) return;
-  if (win.isMaximized()) win.unmaximize(); else win.maximize();
+  if (win.snowMaximized) {
+    if (win.snowRestoreBounds) win.setBounds(win.snowRestoreBounds);
+    win.snowMaximized = false;
+  } else {
+    win.snowRestoreBounds = win.getBounds();
+    const { workArea } = screen.getDisplayMatching(win.getBounds());
+    win.setBounds(workArea);
+    win.snowMaximized = true;
+  }
+  win.webContents.send('window-maximized', win.snowMaximized);
 });
 
 ipcMain.on('window-close', (event) => {
@@ -60,8 +69,6 @@ function createWindow() {
 
   win.once('ready-to-show', () => win.show());
 
-  win.on('maximize', () => win.webContents.send('window-maximized', true));
-  win.on('unmaximize', () => win.webContents.send('window-maximized', false));
 
   win.setMenuBarVisibility(false);
   win.loadURL(TARGET_URL).catch(() => {
