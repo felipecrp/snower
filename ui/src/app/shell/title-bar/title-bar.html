@@ -1,0 +1,24 @@
+<div class="title-bar-drag">
+  <div class="brand no-drag">
+    <strong>Snow</strong>
+    <span class="project" *ngIf="projectSvc.project() as p">— {{ p.description || p.name }}</span>
+  </div>
+
+  <div class="actions no-drag">
+    <button class="icon-btn theme-btn" (click)="toggleTheme()" [attr.title]="themeSvc.theme() === 'light' ? 'Switch to dark' : 'Switch to light'">
+      <app-icon [name]="themeSvc.theme() === 'light' ? 'moon' : 'sun'" />
+    </button>
+
+    <div class="window-controls" *ngIf="showControls">
+      <button class="win-btn minimize-btn" (click)="minimize()" title="Minimize">
+        <app-icon name="minimize" />
+      </button>
+      <button class="win-btn maximize-btn" (click)="maximizeToggle()" [title]="isMaximized() ? 'Restore' : 'Maximize'">
+        <app-icon [name]="isMaximized() ? 'restore' : 'maximize'" />
+      </button>
+      <button class="win-btn close-btn" (click)="close()" title="Close">
+        <app-icon name="close" />
+      </button>
+    </div>
+  </div>
+</div>

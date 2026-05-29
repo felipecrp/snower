@@ -1,5 +1,7 @@
+<app-title-bar *ngIf="isElectron" />
+
 <header class="topbar">
-  <div class="brand">
+  <div class="brand" *ngIf="!isElectron">
     <strong>Snow</strong>
     <span class="project" *ngIf="project() as p">— {{ p.description || p.name }}</span>
   </div>
@@ -24,15 +26,15 @@
 
 <nav class="tab-bar" *ngIf="projectSvc.workspace()">
   <a routerLink="/project" routerLinkActive="active" class="tab-link">
-    <span class="tab-icon">⚙</span>
+    <app-icon name="settings" class="tab-icon" />
     <span class="tab-label">Project</span>
   </a>
   <a routerLink="/snowballing" routerLinkActive="active" class="tab-link">
-    <span class="tab-icon">🔍</span>
+    <app-icon name="search" class="tab-icon" />
     <span class="tab-label">Snowballing</span>
   </a>
   <a routerLink="/results" routerLinkActive="active" class="tab-link">
-    <span class="tab-icon">📊</span>
+    <app-icon name="bar-chart" class="tab-icon" />
     <span class="tab-label">Results</span>
   </a>
 </nav>

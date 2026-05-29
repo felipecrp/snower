@@ -5,13 +5,15 @@ import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/rou
 
 import { ProjectService } from './project.service';
 import { ResearcherService } from './researcher.service';
+import { IconComponent } from './shell/icon/icon';
+import { TitleBarComponent } from './shell/title-bar/title-bar';
 
 const TAB_ORDER = ['project', 'snowballing', 'results'];
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [CommonModule, FormsModule, RouterOutlet, RouterLink, RouterLinkActive, TitleBarComponent, IconComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -19,6 +21,8 @@ export class App implements OnInit {
   readonly projectSvc = inject(ProjectService);
   private readonly researcherSvc = inject(ResearcherService);
   private readonly router = inject(Router);
+
+  readonly isElectron = !!(window as Window).snowShell?.isElectron;
 
   readonly project = this.projectSvc.project;
   readonly activeResearcherId = this.researcherSvc.activeId;

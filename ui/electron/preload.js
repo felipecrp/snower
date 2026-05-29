@@ -1,8 +1,27 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('snowShell', {
+  isElectron: true,
+  platform: process.platform,
+
   pickDirectory(options) {
     return ipcRenderer.invoke('pick-directory', options);
+  },
+
+  minimize() {
+    ipcRenderer.send('window-minimize');
+  },
+
+  maximizeToggle() {
+    ipcRenderer.send('window-maximize-toggle');
+  },
+
+  close() {
+    ipcRenderer.send('window-close');
+  },
+
+  onMaximizeChange(cb) {
+    ipcRenderer.on('window-maximized', (_event, isMaximized) => cb(isMaximized));
   },
 });
 
@@ -14,7 +33,6 @@ document.addEventListener('click', (event) => {
   const href = target.getAttribute('href');
   if (!href) return;
 
-  // Check if it's an external URL
   if (href.startsWith('http://') || href.startsWith('https://')) {
     event.preventDefault();
     event.stopPropagation();
