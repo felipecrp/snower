@@ -1,11 +1,11 @@
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from snow.api.app import create_app
-from snow.domain.models import BibliographicWork, Criterion, CriterionKind, Project, Researcher
+from snow.domain.models import BibliographicWork, Criterion, CriterionKind, Phase, Project, Researcher
 from snow.storage.repo import ProjectRepo
 
 
@@ -19,6 +19,10 @@ def project_dir(tmp_path: Path) -> Path:
             criteria=[
                 Criterion(id="inc1", kind=CriterionKind.INCLUDE, description="empirical study"),
                 Criterion(id="exc1", kind=CriterionKind.EXCLUDE, description="off-topic"),
+            ],
+            phases=[
+                Phase(id="ph1", description="screening"),
+                Phase(id="ph2", description="full-text"),
             ],
         )
     )
@@ -42,11 +46,31 @@ def bob() -> dict[str, str]:
     return {"X-Researcher-Id": "bob@example.com"}
 
 
-def import_work(client: TestClient, set_id: str, title: str, year: int = 2020) -> str:
-    """Import a single work without enrichment and return its bib_key."""
+def import_work(
+    client: TestClient,
+    set_id: str,
+    title: str,
+    year: int = 2020,
+    groups: str | None = None,
+    headers: dict[str, str] | None = None,
+    **fields: object,
+) -> str:
+    """Import a single work without enrichment and return its bib_key.
+
+    `groups` populates the work's `extra["groups"]` so criterion/phase matching
+    runs (requires `headers` carrying an active researcher). Extra bibliographic
+    fields (e.g. venue, doi) can be passed as keyword arguments.
+    """
+    payload: dict[str, object] = {
+        "bib_key": "", "title": title, "authors": ["Author, A"], "year": year,
+    }
+    payload.update(fields)
+    if groups is not None:
+        payload["extra"] = {"groups": groups}
     r = client.post(
         f"/api/sets/{set_id}/import-work?enrich=false",
-        json={"bib_key": "", "title": title, "authors": ["Author, A"], "year": year},
+        json=payload,
+        headers=headers or {},
     )
     assert r.status_code == 200, r.text
     return r.json()["bib_key"]
@@ -78,3 +102,29 @@ def mock_provider(
     p.fetch_citations.return_value = citations or []
     p.enrich_works.side_effect = lambda works: works
     return p
+
+
+def import_bib(
+    client: TestClient,
+    set_id: str,
+    bib_text: str,
+    headers: dict[str, str] | None = None,
+) -> dict:
+    """POST a BibTeX string as a file upload to /api/sets/{set_id}/import.
+
+    Enrichment is patched to a no-op so no network calls are made.
+    Returns the parsed Set JSON.
+    """
+    identity_provider = MagicMock()
+    identity_provider.enrich_works.side_effect = lambda works: works
+    with patch(
+        "snow.api.routers.sets.get_enrichment_provider",
+        return_value=identity_provider,
+    ):
+        r = client.post(
+            f"/api/sets/{set_id}/import",
+            files={"file": ("upload.bib", bib_text.encode(), "application/x-bibtex")},
+            headers=headers or {},
+        )
+    assert r.status_code == 200, r.text
+    return r.json()

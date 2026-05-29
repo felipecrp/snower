@@ -98,12 +98,14 @@ def _work_from_provider_result(ref: BibliographicWork | WorkRef) -> Work:
 
 
 def _fill_missing_work_fields(existing: Work, incoming: Work) -> Work:
+    merged_extra = {**existing.extra, **incoming.extra}
     return existing.model_copy(update={
         "doi": existing.doi or incoming.doi,
         "venue": existing.venue or incoming.venue,
         "url": existing.url or incoming.url,
         "pdf_url": existing.pdf_url or incoming.pdf_url,
         "abstract": existing.abstract or incoming.abstract,
+        "extra": merged_extra,
     })
 
 
