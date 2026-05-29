@@ -891,7 +891,23 @@ export class SnowballingComponent {
           error: () => abort(),
         });
       } else {
-        this.api.getSet('00-start').subscribe({ next: done, error: abort });
+        this.api.getSet('00-start').subscribe({
+          next: (startSet) => {
+            done(startSet);
+            // Refresh orphan if it exists — the backend may have evicted works from it.
+            const hasOrphan = this.projectSvc.sets().some((s) => s.id === 'orphan');
+            if (hasOrphan) {
+              this.api.getSet('orphan').subscribe({
+                next: (orphan) => {
+                  this.projectSvc.sets.update((all) =>
+                    all.map((s) => (s.id === 'orphan' ? orphan : s)),
+                  );
+                },
+              });
+            }
+          },
+          error: abort,
+        });
       }
       return;
     }
