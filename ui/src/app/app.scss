@@ -74,19 +74,16 @@
   text-decoration: none;
   color: var(--text-muted);
   font-size: 0.85rem;
-  border-radius: 6px;
   border-bottom: 2px solid transparent;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  transition: color 0.15s, border-color 0.15s;
   white-space: nowrap;
 
   &:hover {
-    background: var(--surface-hover);
     color: var(--accent-hover);
   }
 
   &.active {
-    color: var(--accent-dark);
-    background: var(--accent-bg);
+    color: var(--accent);
     border-bottom-color: var(--accent);
     font-weight: 600;
   }
