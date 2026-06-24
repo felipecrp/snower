@@ -86,6 +86,17 @@ class Project(BaseModel):
         self.seeds.add(paper.bib_id)
         self._derive()
 
+    def remove_seed(self, bib_id: str) -> None:
+        """Remove a paper from seeds and re-derive placement.
+
+        The paper stays in the project; it will be re-placed as an orphan or via other
+        graph paths. Raises KeyError if bib_id is not currently a seed.
+        """
+        if bib_id not in self.seeds:
+            raise KeyError(f"{bib_id!r} is not a seed")
+        self.seeds.discard(bib_id)
+        self._derive()
+
     # ----- edge mutators ------------------------------------------------
 
     def add_reference(self, citing_id: str, cited_id: str) -> None:
@@ -185,6 +196,10 @@ class Project(BaseModel):
         return [self.papers[n] for n in self.papers[bib_id].citations if n in self.papers]
 
     # ----- set projection & persistence ---------------------------------
+
+    def sets(self) -> list[PaperSet]:
+        """Return the current set projections derived from the placement index."""
+        return self._build_sets()
 
     def _build_sets(self) -> list[PaperSet]:
         """Materialise the current placement as a list of `PaperSet` projections."""

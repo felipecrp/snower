@@ -10,8 +10,10 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "bibtexparser>=2.0.0b9",
+    "fastapi>=0.138.0",
     "pydantic>=2.13.4",
     "pyyaml>=6.0.3",
+    "uvicorn[standard]>=0.49.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -19,6 +21,7 @@ packages = ["snower"]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=9.1.1",
     "pytest-pyspec>=1.1.1",
 ]
