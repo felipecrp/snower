@@ -56,3 +56,57 @@ class PaperRepository:
             Paper.model_validate(yaml.safe_load(p.read_text(encoding="utf-8")))
             for p in sorted(self.directory.glob("*.yml"))
         ]
+
+
+class SetRepository:
+    """File-backed store of PaperSet projections, one YAML file per set named
+    `{escaped_name}-{round}.yml` (spaces in the name become `_`) under a base
+    directory.
+
+    These files are a materialised snapshot of a project's derived placement,
+    rewritten in full on every save; the graph remains the source of truth.
+    """
+
+    def __init__(self, directory: str | Path) -> None:
+        """Initialise with the path to the storage directory."""
+        self.directory = Path(directory)
+
+    @staticmethod
+    def _filename(paper_set) -> str:
+        """Return the YAML file name for a set: `{escaped_name}-{round}.yml`."""
+        escaped = paper_set.name.replace(" ", "_")
+        return f"{escaped}-{paper_set.round}.yml"
+
+    def save(self, paper_set) -> Path:
+        """Write a single PaperSet to `{directory}/{escaped_name}-{round}.yml`.
+
+        Creates the directory if needed.
+        """
+        self.directory.mkdir(parents=True, exist_ok=True)
+        path = self.directory / self._filename(paper_set)
+        path.write_text(
+            yaml.safe_dump(paper_set.model_dump(mode="json"), sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+        return path
+
+    def save_all(self, paper_sets) -> None:
+        """Replace the directory's contents with `paper_sets`.
+
+        Clears every existing `*.yml` first so a set that became empty leaves no
+        stale file behind, then writes each given set.
+        """
+        self.directory.mkdir(parents=True, exist_ok=True)
+        for stale in self.directory.glob("*.yml"):
+            stale.unlink()
+        for paper_set in paper_sets:
+            self.save(paper_set)
+
+    def load_all(self) -> list:
+        """Load every `*.yml` file in the directory as PaperSet instances."""
+        from snower.project import PaperSet
+
+        return [
+            PaperSet.model_validate(yaml.safe_load(p.read_text(encoding="utf-8")))
+            for p in sorted(self.directory.glob("*.yml"))
+        ]

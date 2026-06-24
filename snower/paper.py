@@ -49,8 +49,25 @@ class Author(BaseModel):
 
 
 class Paper(BaseModel):
-    """A bibliographic paper. Explicit fields cover the most common BibTeX attributes;
-    everything else is preserved verbatim in `fields`."""
+    """A bibliographic paper and a node in the project citation graph.
+
+    Explicit fields cover the most common BibTeX attributes; everything else is
+    preserved verbatim in `fields`.
+
+    The graph fields capture the snowballing edges incident to this paper:
+
+    - `references` — bib_ids this paper cites (the backward, *references* side).
+    - `citations` — bib_ids that cite this paper (the forward, *citations* side).
+
+    A single directed edge "A cites B" may be recorded on either side
+    (``A.references ∋ B`` and/or ``B.citations ∋ A``); both are honoured when the
+    project derives placement, so only one side need be written. Round and
+    direction are *not* stored on the paper — they are derived by `Project` from
+    the graph.
+
+    `included` is the screening flag. An excluded paper keeps its own derived
+    set/round but does **not** propagate placement to its neighbours.
+    """
 
     entry_type: EntryType = EntryType.misc
     bib_id: str | None = None
@@ -61,6 +78,25 @@ class Paper(BaseModel):
     doi: str | None = None
     url: str | None = None
     fields: dict[str, str] = {}
+    references: set[str] = set()
+    citations: set[str] = set()
+    included: bool = True
+
+    def add_reference(self, bib_id: str) -> None:
+        """Record that this paper cites ``bib_id`` (backward side).
+
+        Mutates only this paper's `references` set; deriving placement is the
+        `Project`'s responsibility, so this performs no propagation.
+        """
+        self.references.add(bib_id)
+
+    def add_citation(self, bib_id: str) -> None:
+        """Record that ``bib_id`` cites this paper (forward side).
+
+        Mutates only this paper's `citations` set; deriving placement is the
+        `Project`'s responsibility, so this performs no propagation.
+        """
+        self.citations.add(bib_id)
 
 
 class PaperFactory:
