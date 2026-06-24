@@ -113,11 +113,11 @@ class DescribeSnowball:
         assert project.set_of("x") == "backward-2"
 
     def it_prefers_backward_on_a_same_round_tie(self, tmp_path):
-        project = _project_with(tmp_path, "p1", "q", "x", seed="seed")
-        project.add_reference("seed", "p1")
-        project.add_reference("p1", "x")  # x: backward-2
-        project.add_citation("seed", "q")  # q cites seed -> q: forward-1
-        project.add_reference("x", "q")  # x cites q -> candidate forward-2
+        project = _project_with(tmp_path, "a", "b", "x", seed="seed")
+        project.add_reference("seed", "a")   # a: backward-1
+        project.add_citation("seed", "b")    # b cites seed -> b: forward-1
+        project.add_reference("a", "x")      # x: backward-2
+        project.add_citation("b", "x")       # x cites b -> forward-2 candidate
         assert project.set_of("x") == "backward-2"
 
     def it_keeps_placement_when_an_equal_length_path_survives(self, tmp_path):
@@ -166,24 +166,24 @@ class DescribeSnowball:
         with pytest.raises(ValueError, match="cannot cite itself"):
             project.add_reference("seed", "seed")
 
-    def it_records_the_same_edge_via_add_citation(self, tmp_path):
+    def it_records_the_forward_edge_via_add_citation(self, tmp_path):
         project = _project_with(tmp_path, "a", seed="seed")
-        project.add_citation("a", "seed")  # seed cites a, stored on a.citations
-        assert project.set_of("a") == "backward-1"
+        project.add_citation("seed", "a")  # a cites seed, stored on seed.citations -> a: forward-1
+        assert project.set_of("a") == "forward-1"
 
-    def it_resolves_references_of_from_both_stored_sides(self, tmp_path):
+    def it_resolves_references_of_from_the_references_side_only(self, tmp_path):
         project = _project_with(tmp_path, "a", "b", seed="seed")
         project.add_reference("seed", "a")  # stored on seed.references
-        project.add_citation("b", "seed")  # seed cites b, stored on b.citations
+        project.add_citation("b", "seed")   # stored on b.citations, NOT on seed.references
         refs = {p.bib_id for p in project.references_of("seed")}
-        assert refs == {"a", "b"}
+        assert refs == {"a"}  # b is not a backward neighbour of seed
 
-    def it_resolves_citations_of_from_both_stored_sides(self, tmp_path):
+    def it_resolves_citations_of_from_the_citations_side_only(self, tmp_path):
         project = _project_with(tmp_path, "a", "b", seed="seed")
         project.add_citation("seed", "a")  # a cites seed, stored on seed.citations
-        project.add_reference("b", "seed")  # b cites seed, stored on b.references
+        project.add_reference("b", "seed")  # b cites seed, stored on b.references, NOT seed.citations
         cites = {p.bib_id for p in project.citations_of("seed")}
-        assert cites == {"a", "b"}
+        assert cites == {"a"}  # b is not a forward neighbour of seed
 
 
 class DescribeProjectPersistence:
@@ -219,7 +219,7 @@ class DescribeProjectPersistence:
         project.add_citation("seed", "a")  # now a also forward-1; still placed backward-1
         # Re-route: make a a seed's citation only by removing the reference path.
         project.papers["seed"].references.discard("a")
-        project._rederive()
+        project._derive()
         project.save()
         assert not (tmp_path / "sets" / "backward-1.yml").exists()
         assert (tmp_path / "sets" / "forward-1.yml").exists()

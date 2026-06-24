@@ -1,4 +1,3 @@
-from collections import defaultdict, deque
 from pathlib import Path
 from typing import ClassVar
 
@@ -44,13 +43,12 @@ class Project(BaseModel):
     Papers are stored exactly once in `papers` (keyed by bib_id) and double as the
     nodes of the citation graph. `seeds` are the bib_ids that anchor the review at
     round 0. Every other paper's set (a backward/forward direction and a round) is
-    *derived* from the graph by snowballing outward from the seeds — see
+    *derived* from the graph by a single layered BFS from the seeds — see
     `doc/snowballing.md`.
 
-    Set membership lives in the private `_placement` index, kept live and updated
-    incrementally by the four mutators (`add_reference`, `add_citation`,
-    `include`, `exclude`). Papers with no included path back to a seed are absent
-    from `_placement` and reported as the ``orphan`` set, round ``-1``.
+    Set membership lives in the private `_placement` index, rebuilt from scratch by
+    `_derive()` after every mutation. Papers with no included path back to a seed
+    are absent from `_placement` and reported as the ``orphan`` set, round ``-1``.
     """
 
     name: str
@@ -86,8 +84,7 @@ class Project(BaseModel):
         """
         self.add_paper(paper)
         self.seeds.add(paper.bib_id)
-        self._placement[paper.bib_id] = ("start", 0)
-        self._propagate([paper.bib_id])
+        self._derive()
 
     # ----- edge mutators ------------------------------------------------
 
@@ -98,18 +95,17 @@ class Project(BaseModel):
         """
         self._require_edge(citing_id, cited_id)
         self.papers[citing_id].add_reference(cited_id)
-        self._relax_edge(citing_id, cited_id)
+        self._derive()
 
     def add_citation(self, cited_id: str, citing_id: str) -> None:
         """Record that ``citing_id`` cites ``cited_id`` (forward edge) and re-derive.
 
-        Stores the same directed edge as the equivalent
-        ``add_reference(citing_id, cited_id)``, only on the citations side.
+        Stores the edge on the cited paper's ``citations`` set (the forward side).
         Raises KeyError if either paper is unknown and ValueError on self-citation.
         """
         self._require_edge(citing_id, cited_id)
         self.papers[cited_id].add_citation(citing_id)
-        self._relax_edge(citing_id, cited_id)
+        self._derive()
 
     def _require_edge(self, citing_id: str, cited_id: str) -> None:
         """Validate an edge's endpoints: both must exist and must differ."""
@@ -122,122 +118,49 @@ class Project(BaseModel):
     # ----- screening ----------------------------------------------------
 
     def include(self, bib_id: str) -> None:
-        """Mark a paper included again and let it propagate placement to neighbours.
+        """Mark a paper included again and re-derive placement from the seeds.
 
-        The paper keeps its own placement; including it merely re-enables its
-        outward contribution, so dependents that orphaned (or sat at a higher
-        round) when it was excluded are re-derived.
+        Including re-enables the paper's outward contribution, so dependents that
+        orphaned (or sat at a higher round) when it was excluded are rerouted.
         """
         self.papers[bib_id].included = True
-        self._propagate([bib_id])
+        self._derive()
 
     def exclude(self, bib_id: str) -> None:
         """Mark a paper excluded: it keeps its set but stops propagating.
 
-        Its dependents re-derive through other included parents, or become
-        orphans. Implemented by re-deriving placement from the seeds — exclude is
-        the rare, subtle case (equal-length alternative paths), so a full
-        re-derivation is both correct and simplest.
+        Its dependents re-derive through other included parents, or become orphans.
         """
         self.papers[bib_id].included = False
-        self._rederive()
+        self._derive()
 
     # ----- placement core ----------------------------------------------
 
-    def _relax_edge(self, citing_id: str, cited_id: str) -> None:
-        """Relax placement across a newly added ``citing -> cited`` edge.
+    def _derive(self) -> None:
+        """Rebuild `_placement` from seeds via a single layered BFS.
 
-        Edge-adds can only ever *lower* a round, so a decrease-only cascade from
-        both endpoints suffices: a placed, included ``citing`` offers ``cited`` a
-        backward placement, and a placed, included ``cited`` offers ``citing`` a
-        forward placement; improvements ripple outward and terminate quickly.
+        Each BFS layer is one round. Within a round, the backward pass runs across
+        the whole frontier before the forward pass, so backward wins a same-round
+        tie (rule 6). An already-placed paper reached again is skipped. Excluded
+        papers receive a placement but do not propagate to their neighbours (rule 4).
         """
-        self._propagate([citing_id, cited_id])
-
-    def _propagate(self, sources: list[str]) -> None:
-        """Relax placement outward from `sources` until nothing improves.
-
-        Each placed, *included* paper offers every backward neighbour a
-        ``(backward, round + 1)`` placement and every forward neighbour a
-        ``(forward, round + 1)`` placement. A paper that improves is re-enqueued so
-        the improvement cascades. Excluded papers may receive a placement but never
-        offer one (rule 4). Rounds only decrease, so the worklist terminates.
-        """
-        rev_references, rev_citations = self._reverse_index()
-        queue = deque(sources)
-        while queue:
-            pid = queue.popleft()
-            placement = self._placement.get(pid)
-            if placement is None or not self.papers[pid].included:
-                continue
-            next_round = placement[1] + 1
-            for neighbour in self._backward_neighbours(pid, rev_citations):
-                if self._improve(neighbour, ("backward", next_round)):
-                    queue.append(neighbour)
-            for neighbour in self._forward_neighbours(pid, rev_references):
-                if self._improve(neighbour, ("forward", next_round)):
-                    queue.append(neighbour)
-
-    def _rederive(self) -> None:
-        """Rebuild `_placement` from scratch by snowballing from the seeds.
-
-        A one-time multi-source traversal: the only place a full graph walk runs.
-        Used by `exclude` and by `load`, where incremental updates do not apply.
-        """
-        self._placement = {s: ("start", 0) for s in self.seeds if s in self.papers}
-        self._propagate(list(self._placement))
-
-    def _improve(self, bib_id: str, candidate: Placement) -> bool:
-        """Apply `candidate` to `bib_id` if it is better; return whether to re-propagate.
-
-        Returns True only when the *round* strictly improved (a brand-new
-        placement or a lower round), since that is what changes neighbours. A
-        same-round backward-over-forward upgrade is applied but does not need to
-        re-propagate: a neighbour's round depends on the edge to it, not on this
-        paper's direction.
-        """
-        current = self._placement.get(bib_id)
-        if not self._is_better(candidate, current):
-            return False
-        self._placement[bib_id] = candidate
-        return current is None or candidate[1] < current[1]
-
-    @staticmethod
-    def _is_better(candidate: Placement, current: Placement | None) -> bool:
-        """Return whether `candidate` should replace `current` (lower round, or
-        equal round with backward beating forward; rule 6)."""
-        if current is None:
-            return True
-        if candidate[1] != current[1]:
-            return candidate[1] < current[1]
-        return candidate[0] == "backward" and current[0] == "forward"
-
-    # ----- runtime reverse index ----------------------------------------
-
-    def _reverse_index(self) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
-        """Build the runtime reverse adjacency once for the current mutation.
-
-        Because each edge is stored on only one side, full neighbours need a scan
-        of the opposite side. Returns ``(rev_references, rev_citations)`` where
-        ``rev_references[x] = {p : x ∈ p.references}`` and
-        ``rev_citations[x] = {p : x ∈ p.citations}``.
-        """
-        rev_references: dict[str, set[str]] = defaultdict(set)
-        rev_citations: dict[str, set[str]] = defaultdict(set)
-        for pid, paper in self.papers.items():
-            for cited in paper.references:
-                rev_references[cited].add(pid)
-            for citing in paper.citations:
-                rev_citations[citing].add(pid)
-        return rev_references, rev_citations
-
-    def _backward_neighbours(self, bib_id: str, rev_citations: dict[str, set[str]]) -> set[str]:
-        """All papers ``bib_id`` cites (its references), from both stored sides."""
-        return self.papers[bib_id].references | rev_citations.get(bib_id, set())
-
-    def _forward_neighbours(self, bib_id: str, rev_references: dict[str, set[str]]) -> set[str]:
-        """All papers that cite ``bib_id`` (its citations), from both stored sides."""
-        return self.papers[bib_id].citations | rev_references.get(bib_id, set())
+        placement: dict[str, Placement] = {s: ("start", 0) for s in self.seeds if s in self.papers}
+        frontier = list(placement)
+        round_ = 0
+        while frontier:
+            round_ += 1
+            next_frontier: list[str] = []
+            for direction, attr in [("backward", "references"), ("forward", "citations")]:
+                for member in frontier:
+                    if not self.papers[member].included:
+                        continue
+                    for nb in getattr(self.papers[member], attr):
+                        if nb not in self.papers or nb in placement:
+                            continue
+                        placement[nb] = (direction, round_)
+                        next_frontier.append(nb)
+            frontier = next_frontier
+        self._placement = placement
 
     # ----- read accessors -----------------------------------------------
 
@@ -254,22 +177,12 @@ class Project(BaseModel):
         return [self.papers[bib_id] for bib_id in self.papers if self.set_of(bib_id) == set_name]
 
     def references_of(self, bib_id: str) -> list[Paper]:
-        """Return the Paper objects this paper cites (full backward neighbours)."""
-        _, rev_citations = self._reverse_index()
-        return [
-            self.papers[n]
-            for n in self._backward_neighbours(bib_id, rev_citations)
-            if n in self.papers
-        ]
+        """Return the Paper objects this paper cites (backward neighbours, from references only)."""
+        return [self.papers[n] for n in self.papers[bib_id].references if n in self.papers]
 
     def citations_of(self, bib_id: str) -> list[Paper]:
-        """Return the Paper objects that cite this paper (full forward neighbours)."""
-        rev_references, _ = self._reverse_index()
-        return [
-            self.papers[n]
-            for n in self._forward_neighbours(bib_id, rev_references)
-            if n in self.papers
-        ]
+        """Return the Paper objects that cite this paper (forward neighbours, from citations only)."""
+        return [self.papers[n] for n in self.papers[bib_id].citations if n in self.papers]
 
     # ----- set projection & persistence ---------------------------------
 
@@ -321,5 +234,5 @@ class Project(BaseModel):
         papers = {p.bib_id: p for p in paper_list}
         seeds = set(metadata.get("seeds", []))
         project = cls(name=metadata["name"], path=path, papers=papers, seeds=seeds)
-        project._rederive()
+        project._derive()
         return project

@@ -56,14 +56,13 @@ class Paper(BaseModel):
 
     The graph fields capture the snowballing edges incident to this paper:
 
-    - `references` — bib_ids this paper cites (the backward, *references* side).
-    - `citations` — bib_ids that cite this paper (the forward, *citations* side).
+    - `references` — bib_ids this paper cites (backward neighbours, read directly).
+    - `citations` — bib_ids that cite this paper (forward neighbours, read directly).
 
-    A single directed edge "A cites B" may be recorded on either side
-    (``A.references ∋ B`` and/or ``B.citations ∋ A``); both are honoured when the
-    project derives placement, so only one side need be written. Round and
-    direction are *not* stored on the paper — they are derived by `Project` from
-    the graph.
+    The two sets are **independent** directed-neighbour sets. Each is read directly
+    and never reconstructed from the other: if ``A.references ∋ B``, that does not
+    imply ``A ∈ B.citations``. Round and direction are *not* stored on the paper —
+    they are derived by `Project` from the graph.
 
     `included` is the screening flag. An excluded paper keeps its own derived
     set/round but does **not** propagate placement to its neighbours.

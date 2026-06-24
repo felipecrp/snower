@@ -7,22 +7,22 @@ paper into a round-numbered set automatically.
 
 ## Directions
 
-Each paper has two kinds of incident edges:
+Each paper has two independent directed-neighbour sets:
 
-- **Backward** — the paper's **references** (the works it cites).
-- **Forward** — the paper's **citations** (the works that cite it).
+- **Backward** — `paper.references`: the works this paper cites.
+- **Forward** — `paper.citations`: the works that cite this paper.
 
-A single directed edge "A cites B" may be stored on either side — on
-`A.references` and/or on `B.citations`. Both are honoured, so only one side needs
-to be written; the missing side is recovered at runtime by scanning the opposite
-field (the runtime reverse index).
+The two sets are **independent**: storing an edge on one side does not imply the
+other. `add_reference("A", "B")` records `B` in `A.references`; `B.citations` is
+not touched and `A` will not appear in `citations_of("B")`. To record the same
+logical edge from the other direction, call `add_citation("B", "A")` explicitly.
 
 ## Placement rules
 
 1. **Seeds** are placed in the `start` set, round **0**.
 2. Reaching paper X from an *included* parent P:
-   - via a **reference** edge (P cites X) → a **backward** set;
-   - via a **citation** edge (X cites P) → a **forward** set.
+   - via a **reference** edge (`X ∈ P.references`, P cites X) → a **backward** set;
+   - via a **citation** edge (`X ∈ P.citations`, X cites P) → a **forward** set.
 
    In both cases `round(X) = round(P) + 1`.
 3. **Minimum round wins.** X's round is the minimum over all included parents that
@@ -34,25 +34,49 @@ field (the runtime reverse index).
 5. A paper with no included path back to a seed lands in the **orphan** set,
    round **-1** (reported as `orphan--1`).
 6. **One set per paper.** On a same-round backward/forward tie, **backward wins**.
-7. Placements stay live after every mutation.
+7. Placements are always up-to-date after every mutation.
 
-## Incremental placement
+## BFS derivation
 
-There is no global recompute on the hot path. Each mutator adjusts placement in
-place:
+After every mutation, `Project._derive()` rebuilds `_placement` in one layered
+BFS from the seeds. There is no incremental update or reverse-index scan.
 
-- `add_reference` / `add_citation` / `include` only ever *lower* a round, so they
-  **relax and cascade**: a placed, included paper offers each backward neighbour
-  `(backward, round + 1)` and each forward neighbour `(forward, round + 1)`;
-  whenever a neighbour improves it is re-processed, so the change ripples outward
-  and stops as soon as nothing improves.
-- `exclude` re-derives placement by snowballing from the seeds again. Exclusion is
-  the subtle case (a paper may have several equal-length paths), and it is far
-  rarer than edge-adds, so a full re-derivation is used for correctness and
-  simplicity.
+```
+placement = {seed: ("start", 0) for seed in seeds if seed in papers}
+frontier = list(placement); round = 0
 
-`Project.load` performs the same one-time snowball from the seeds to rebuild
-placement from the stored graph; the `sets/` files on disk are only a snapshot.
+while frontier:
+    round += 1
+    next_frontier = []
+    for direction, attr in [("backward", "references"), ("forward", "citations")]:
+        for member in frontier:
+            if not papers[member].included:   # excluded: keeps its set, does not propagate
+                continue
+            for nb in getattr(papers[member], attr):
+                if nb not in papers or nb in placement:   # unknown or already placed → skip
+                    continue
+                placement[nb] = (direction, round)
+                next_frontier.append(nb)
+    frontier = next_frontier
+```
+
+**Why BFS gives the right answers:**
+
+- Each paper is placed the first time it is reached, which is also the shortest
+  path from any seed (rule 3: minimum round).
+- Within a round, the backward pass runs across the entire frontier before the
+  forward pass begins. A paper placed by the backward pass is already in
+  `placement` when the forward pass encounters it, so the forward candidate is
+  skipped — backward wins the tie (rule 6).
+- An excluded member is skipped in the inner loop, so its neighbours are not
+  offered a placement through it (rule 4); the excluded member itself was already
+  placed in an earlier round (or the same round via another path) and keeps that
+  placement.
+- Papers never reached are absent from `placement` and reported as orphan (rule 5).
+
+`Project.load` calls `_derive()` after reconstructing the graph from disk; the
+`sets/` files are only a materialised snapshot and are never used as the source of
+truth.
 
 ## Example
 
@@ -65,6 +89,10 @@ project.add_seed(Paper(bib_id="seed2020review", title="A Review", year=2020))
 project.add_paper(Paper(bib_id="smith2015method", title="A Method", year=2015))
 project.add_reference("seed2020review", "smith2015method")   # seed cites smith
 project.set_of("smith2015method")        # -> "backward-1"
+
+# Directions are independent: the reference above does NOT make seed appear
+# in citations_of("smith2015method") — that would require add_citation explicitly.
+project.citations_of("smith2015method")  # -> []
 
 project.exclude("smith2015method")       # screened out; stops propagating
 project.include("smith2015method")       # bring it back
