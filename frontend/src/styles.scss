@@ -1,0 +1,411 @@
+// =============================================================================
+// Global stylesheet
+//
+// Bootstrap is imported here as SCSS so that our own *semantic* classes can
+// `@extend` Bootstrap's classes. Templates never use raw Bootstrap utility
+// classes; they use the intention-revealing classes defined below, which pull
+// in Bootstrap rules through `@extend`. Keeping all `@extend`s in this single
+// global file is required: `@extend` can only reach selectors that live in the
+// same compilation, and component stylesheets are compiled in isolation.
+// =============================================================================
+
+@use 'bootstrap/scss/bootstrap' with (
+  $primary: #2563eb,
+  $border-radius: 0.5rem,
+);
+@use 'bootstrap-icons/font/bootstrap-icons';
+
+// ----- Layout shell ----------------------------------------------------------
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-topbar {
+  @extend .navbar;
+  @extend .navbar-expand;
+  @extend .bg-white;
+  @extend .border-bottom;
+  @extend .px-3;
+  position: sticky;
+  top: 0;
+  z-index: 1030;
+}
+
+.app-brand {
+  @extend .navbar-brand;
+  @extend .fw-semibold;
+  @extend .d-flex;
+  @extend .align-items-center;
+  @extend .gap-2;
+  @extend .mb-0;
+}
+
+.app-toggle {
+  @extend .btn;
+  @extend .btn-light;
+  @extend .border;
+  @extend .me-3;
+  line-height: 1;
+}
+
+.app-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+// ----- Sidebar ---------------------------------------------------------------
+
+.app-sidebar {
+  @extend .bg-white;
+  @extend .border-end;
+  @extend .py-3;
+  width: 220px;
+  flex: 0 0 auto;
+  transition: width 0.18s ease-in-out;
+  overflow-x: hidden;
+
+  &.is-collapsed {
+    width: 64px;
+  }
+}
+
+.app-nav {
+  @extend .nav;
+  @extend .flex-column;
+  @extend .gap-1;
+  @extend .px-2;
+}
+
+.app-nav-link {
+  @extend .nav-link;
+  @extend .d-flex;
+  @extend .align-items-center;
+  @extend .gap-3;
+  @extend .text-body;
+  @extend .rounded;
+  @extend .px-3;
+  @extend .py-2;
+  white-space: nowrap;
+
+  &:hover {
+    @extend .bg-light;
+  }
+
+  // routerLinkActive marker.
+  &.is-active {
+    @extend .bg-primary;
+    @extend .text-white;
+  }
+
+  .app-sidebar.is-collapsed & {
+    @extend .justify-content-center;
+    @extend .px-0;
+  }
+}
+
+.app-nav-label {
+  .app-sidebar.is-collapsed & {
+    display: none;
+  }
+}
+
+.app-nav-icon {
+  @extend .fs-5;
+  @extend .d-inline-flex;
+  line-height: 1;
+}
+
+// ----- Icons (mapped to Bootstrap Icons via @extend) -------------------------
+// Bootstrap Icons define `.bi-name::before { content: ... }`. Extending the
+// class also extends its `::before` pseudo-element, so the glyph follows.
+
+%bi-base {
+  @extend .bi;
+}
+
+.icon-project {
+  @extend %bi-base;
+  @extend .bi-gear;
+}
+
+.icon-search {
+  @extend %bi-base;
+  @extend .bi-search;
+}
+
+.icon-import {
+  @extend %bi-base;
+  @extend .bi-search;
+}
+
+.icon-snowballing {
+  @extend %bi-base;
+  @extend .bi-snow;
+}
+
+.icon-analysis {
+  @extend %bi-base;
+  @extend .bi-clipboard-data;
+}
+
+.icon-report {
+  @extend %bi-base;
+  @extend .bi-graph-up;
+}
+
+.icon-export {
+  @extend %bi-base;
+  @extend .bi-box-arrow-up;
+}
+
+// ----- Content area ----------------------------------------------------------
+
+.app-content {
+  @extend .p-4;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.page-title {
+  @extend .h4;
+  @extend .fw-semibold;
+  @extend .mb-1;
+}
+
+.page-subtitle {
+  @extend .text-secondary;
+  @extend .mb-4;
+}
+
+// ----- Cards / panels --------------------------------------------------------
+
+.panel {
+  @extend .card;
+  @extend .border-0;
+  @extend .shadow-sm;
+  @extend .mb-3;
+}
+
+.panel-body {
+  @extend .card-body;
+}
+
+.panel-title {
+  @extend .card-title;
+  @extend .h6;
+  @extend .text-uppercase;
+  @extend .text-secondary;
+  @extend .fw-semibold;
+  letter-spacing: 0.03em;
+}
+
+.stat-grid {
+  @extend .row;
+  @extend .g-3;
+}
+
+.stat-col {
+  @extend .col-sm-6;
+  @extend .col-lg-3;
+}
+
+.stat-card {
+  @extend .panel;
+  @extend .text-center;
+  @extend .h-100;
+  @extend .mb-0;
+}
+
+.stat-value {
+  @extend .display-6;
+  @extend .fw-bold;
+  @extend .text-primary;
+}
+
+.stat-label {
+  @extend .text-secondary;
+  @extend .small;
+}
+
+// ----- Form controls ---------------------------------------------------------
+
+.field-label {
+  @extend .form-label;
+  @extend .fw-medium;
+}
+
+.bibtex-area {
+  @extend .form-control;
+  @extend .font-monospace;
+  min-height: 16rem;
+}
+
+.search-input {
+  @extend .form-control;
+}
+
+.toolbar {
+  @extend .d-flex;
+  @extend .align-items-center;
+  @extend .gap-2;
+  @extend .flex-wrap;
+  @extend .mb-3;
+}
+
+// ----- Buttons ---------------------------------------------------------------
+
+.btn-action {
+  @extend .btn;
+  @extend .btn-primary;
+}
+
+.btn-ghost {
+  @extend .btn;
+  @extend .btn-outline-secondary;
+}
+
+.btn-include {
+  @extend .btn;
+  @extend .btn-sm;
+  @extend .btn-success;
+}
+
+.btn-exclude {
+  @extend .btn;
+  @extend .btn-sm;
+  @extend .btn-outline-danger;
+}
+
+// ----- Badges & status -------------------------------------------------------
+
+.tag {
+  @extend .badge;
+  @extend .rounded-pill;
+  @extend .text-bg-light;
+  @extend .border;
+  @extend .fw-normal;
+}
+
+.tag-included {
+  @extend .badge;
+  @extend .rounded-pill;
+  @extend .text-bg-success;
+}
+
+.tag-excluded {
+  @extend .badge;
+  @extend .rounded-pill;
+  @extend .text-bg-secondary;
+}
+
+.alert-note {
+  @extend .alert;
+  @extend .alert-info;
+}
+
+.alert-error {
+  @extend .alert;
+  @extend .alert-danger;
+}
+
+.alert-ok {
+  @extend .alert;
+  @extend .alert-success;
+}
+
+// ----- Snowballing two-pane layout ------------------------------------------
+
+.snowball-layout {
+  @extend .row;
+  @extend .g-3;
+}
+
+.snowball-sets {
+  @extend .col-12;
+  @extend .col-md-3;
+  @extend .col-lg-2;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+}
+
+.snowball-papers {
+  @extend .col-12;
+  @extend .col-md-9;
+  @extend .col-lg-10;
+}
+
+.set-list {
+  @extend .list-group;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.set-item {
+  @extend .list-group-item;
+  @extend .list-group-item-action;
+  @extend .d-flex;
+  @extend .justify-content-between;
+  @extend .align-items-center;
+  cursor: pointer;
+
+  &.is-active {
+    @extend .active;
+  }
+}
+
+.set-item-orphan {
+  margin-top: auto;
+}
+
+.paper-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.paper-item {
+  @extend .d-flex;
+  @extend .justify-content-between;
+  @extend .align-items-start;
+  @extend .gap-3;
+  @extend .border;
+  @extend .rounded;
+  @extend .p-3;
+  background-color: #fff;
+}
+
+.paper-meta {
+  min-width: 0;
+}
+
+.paper-title {
+  @extend .fw-semibold;
+  @extend .mb-1;
+}
+
+.paper-authors {
+  @extend .text-secondary;
+  @extend .small;
+  @extend .mb-1;
+}
+
+.empty-state {
+  @extend .text-center;
+  @extend .text-secondary;
+  @extend .py-5;
+}
+
+.spinner {
+  @extend .spinner-border;
+  @extend .text-primary;
+}

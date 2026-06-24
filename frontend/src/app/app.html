@@ -1,0 +1,58 @@
+<div class="app-shell">
+  <nav class="app-topbar">
+    <button class="app-toggle" (click)="toggleSidebar()" aria-label="Toggle sidebar">
+      <i class="bi bi-list"></i>
+    </button>
+    <span class="app-brand">
+      <i class="bi bi-snow"></i>
+      Snower
+    </span>
+  </nav>
+
+  <div class="app-body">
+    <aside class="app-sidebar" [class.is-collapsed]="collapsed()">
+      <nav class="app-nav">
+        <a class="app-nav-link"
+           routerLink="/setup"
+           routerLinkActive="is-active">
+          <span class="app-nav-icon icon-project"></span>
+          <span class="app-nav-label">Setup</span>
+        </a>
+        <a class="app-nav-link"
+           routerLink="/import"
+           routerLinkActive="is-active">
+          <span class="app-nav-icon icon-import"></span>
+          <span class="app-nav-label">Search / Import</span>
+        </a>
+        <a class="app-nav-link"
+           routerLink="/snowballing"
+           routerLinkActive="is-active">
+          <span class="app-nav-icon icon-snowballing"></span>
+          <span class="app-nav-label">Snowballing</span>
+        </a>
+        <a class="app-nav-link"
+           routerLink="/analysis"
+           routerLinkActive="is-active">
+          <span class="app-nav-icon icon-analysis"></span>
+          <span class="app-nav-label">Analysis</span>
+        </a>
+        <a class="app-nav-link"
+           routerLink="/report"
+           routerLinkActive="is-active">
+          <span class="app-nav-icon icon-report"></span>
+          <span class="app-nav-label">Report</span>
+        </a>
+        <a class="app-nav-link"
+           routerLink="/export"
+           routerLinkActive="is-active">
+          <span class="app-nav-icon icon-export"></span>
+          <span class="app-nav-label">Export</span>
+        </a>
+      </nav>
+    </aside>
+
+    <main class="app-content">
+      <router-outlet />
+    </main>
+  </div>
+</div>

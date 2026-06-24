@@ -12,9 +12,14 @@ class ScreeningRequest(BaseModel):
     included: bool
 
 
+class ScreeningResult(BaseModel):
+    bib_id: str
+    included: bool | None
+
+
 class SetSummary(BaseModel):
     name: str
-    round: int
+    round: int | None
     count: int
 
     @classmethod

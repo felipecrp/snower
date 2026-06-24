@@ -10,7 +10,7 @@ from snower.api.schemas import (
     SetSummary,
 )
 from snower.bibtex import parse_bibtex
-from snower.project import PaperSet, Project
+from snower.project import Project
 
 
 def _load_or_create(path: Path) -> Project:
@@ -55,10 +55,10 @@ def get_project_summary(project: Project = Depends(get_project)):
     return _summary(project)
 
 
-@router.get("/sets", response_model=list[PaperSet])
+@router.get("/sets", response_model=list[SetSummary])
 def list_sets(project: Project = Depends(get_project)):
     """List all paper sets derived from the citation graph."""
-    return project.sets()
+    return [SetSummary.from_paper_set(ps) for ps in project.sets()]
 
 
 @router.get("/sets/{set_name}/papers", response_model=list)

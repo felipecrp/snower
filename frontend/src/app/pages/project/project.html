@@ -1,0 +1,43 @@
+@if (loading()) {
+  <div class="spinner" role="status">
+    <span class="visually-hidden">Loading…</span>
+  </div>
+} @else if (error()) {
+  <div class="alert-error">{{ error() }}</div>
+} @else if (project(); as p) {
+  <h1 class="page-title">{{ p.name }}</h1>
+  <p class="page-subtitle">{{ p.seeds.length }} seed paper{{ p.seeds.length === 1 ? '' : 's' }}</p>
+
+  <div class="panel">
+    <div class="panel-body">
+      <h2 class="panel-title">Seeds</h2>
+      @if (p.seeds.length === 0) {
+        <p class="empty-state">No seeds imported yet.</p>
+      } @else {
+        <ul class="list-unstyled mb-0">
+          @for (seed of p.seeds; track seed) {
+            <li class="py-1 text-monospace small">{{ seed }}</li>
+          }
+        </ul>
+      }
+    </div>
+  </div>
+
+  <h2 class="panel-title mt-4 mb-3">Sets</h2>
+  @if (p.sets.length === 0) {
+    <p class="empty-state">No sets derived yet.</p>
+  } @else {
+    <div class="stat-grid">
+      @for (set of p.sets; track set.name + set.round) {
+        <div class="stat-col">
+          <div class="stat-card">
+            <div class="panel-body">
+              <div class="stat-value">{{ set.count }}</div>
+              <div class="stat-label">{{ set.name }} · round {{ set.round }}</div>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  }
+}

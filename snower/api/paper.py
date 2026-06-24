@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from snower.api.project import _summary, get_project
-from snower.api.schemas import ProjectSummary, ScreeningRequest
+from snower.api.schemas import ProjectSummary, ScreeningRequest, ScreeningResult
 from snower.paper import Paper
 from snower.project import Project
 
@@ -23,7 +23,7 @@ def get_paper(bib_id: str, project: Project = Depends(get_project)):
     return paper
 
 
-@router.patch("/{bib_id}", response_model=Paper)
+@router.patch("/{bib_id}", response_model=ScreeningResult)
 def screen_paper(bib_id: str, body: ScreeningRequest, project: Project = Depends(get_project)):
     """Include or exclude a paper (screening)."""
     if bib_id not in project.papers:
@@ -33,7 +33,8 @@ def screen_paper(bib_id: str, body: ScreeningRequest, project: Project = Depends
     else:
         project.exclude(bib_id)
     project.save()
-    return project.papers[bib_id]
+    paper = project.papers[bib_id]
+    return ScreeningResult(bib_id=bib_id, included=paper.included)
 
 
 @router.post("/{bib_id}/seed", response_model=ProjectSummary)

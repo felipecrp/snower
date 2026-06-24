@@ -52,7 +52,7 @@ class DescribeImport:
         client.post("/import", json={"bibtex": SMALL_BIBTEX, "as_seed": True})
         r = client.get("/sets")
         sets = r.json()
-        assert any(s["name"] == "start" and s["round"] == 0 for s in sets)
+        assert any(s["name"] == "start_set" and s["round"] is None for s in sets)
 
     def it_skips_papers_without_bib_id(self, tmp_path):
         client, _ = _make_client(tmp_path)
@@ -69,12 +69,12 @@ class DescribeSets:
         client.post("/import", json={"bibtex": SMALL_BIBTEX, "as_seed": True})
         r = client.get("/sets")
         assert r.status_code == 200
-        assert any(s["name"] == "start" for s in r.json())
+        assert any(s["name"] == "start_set" for s in r.json())
 
     def it_lists_papers_in_set(self, tmp_path):
         client, _ = _make_client(tmp_path)
         client.post("/import", json={"bibtex": SMALL_BIBTEX, "as_seed": True})
-        r = client.get("/sets/start-0/papers")
+        r = client.get("/sets/start_set/papers")
         assert r.status_code == 200
         bib_ids = [p["bib_id"] for p in r.json()]
         assert "kitchenham2009systematic" in bib_ids
@@ -127,14 +127,14 @@ class DescribeAddSeed:
         client, _ = _make_client(tmp_path)
         # import as plain paper (not a seed)
         client.post("/import", json={"bibtex": SMALL_BIBTEX, "as_seed": False})
-        # not yet in start-0
-        assert client.get("/sets/start-0/papers").json() == []
+        # not yet in start_set
+        assert client.get("/sets/start_set/papers").json() == []
 
         r = client.post("/papers/kitchenham2009systematic/seed")
         assert r.status_code == 200
         assert "kitchenham2009systematic" in r.json()["seeds"]
 
-        bib_ids = [p["bib_id"] for p in client.get("/sets/start-0/papers").json()]
+        bib_ids = [p["bib_id"] for p in client.get("/sets/start_set/papers").json()]
         assert "kitchenham2009systematic" in bib_ids
 
     def it_returns_404_for_unknown_bib_id(self, tmp_path):

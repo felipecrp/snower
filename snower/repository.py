@@ -73,8 +73,14 @@ class SetRepository:
 
     @staticmethod
     def _filename(paper_set) -> str:
-        """Return the YAML file name for a set: `{escaped_name}-{round}.yml`."""
+        """Return the YAML file name for a set.
+
+        Directional sets use ``{name}-{round}.yml``; special sets without a
+        meaningful round (``start_set``, ``orphans``) use ``{name}.yml``.
+        """
         escaped = paper_set.name.replace(" ", "_")
+        if paper_set.round is None:
+            return f"{escaped}.yml"
         return f"{escaped}-{paper_set.round}.yml"
 
     def save(self, paper_set) -> Path:

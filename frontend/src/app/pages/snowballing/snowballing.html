@@ -1,0 +1,87 @@
+<h1 class="page-title">Snowballing</h1>
+<p class="page-subtitle">Browse derived sets and screen papers for inclusion.</p>
+
+@if (loadingSets()) {
+  <div class="spinner" role="status">
+    <span class="visually-hidden">Loading…</span>
+  </div>
+} @else if (setsError()) {
+  <div class="alert-error">{{ setsError() }}</div>
+} @else {
+  <div class="snowball-layout">
+    <div class="snowball-sets">
+      <ul class="set-list">
+        @if (sets().length === 0) {
+          <li class="list-group-item text-secondary">No sets yet.</li>
+        }
+        @for (set of sortedSets(); track setKey(set)) {
+          <li class="set-item"
+              [class.is-active]="selectedSet() !== null && setKey(selectedSet()!) === setKey(set)"
+              [class.set-item-orphan]="set.name === 'orphans'"
+              (click)="selectSet(set)">
+            <span>{{ setLabel(set) }}</span>
+            <span class="tag">{{ set.count }}</span>
+          </li>
+        }
+      </ul>
+    </div>
+
+    <div class="snowball-papers">
+      @if (!selectedSet()) {
+        <p class="empty-state">Select a set to view its papers.</p>
+      } @else if (loadingPapers()) {
+        <div class="spinner" role="status">
+          <span class="visually-hidden">Loading…</span>
+        </div>
+      } @else if (papersError()) {
+        <div class="alert-error">{{ papersError() }}</div>
+      } @else if (papers().length === 0) {
+        <p class="empty-state">No papers in this set.</p>
+      } @else {
+        <ul class="paper-list">
+          @for (paper of papers(); track paper.bib_id) {
+            <li class="paper-item">
+              <div class="paper-meta">
+                <div class="paper-title">{{ paper.title }}</div>
+                <div class="paper-authors">
+                  @for (a of paper.authors; track $index) {
+                    {{ a.family }}@if (a.given) {, {{ a.given }}}@if (!$last) {; }
+                  }
+                  @if (paper.year) { · {{ paper.year }} }
+                </div>
+                @if (paper.included) {
+                  <span class="tag-included">included</span>
+                } @else {
+                  <span class="tag-excluded">excluded</span>
+                }
+              </div>
+              <div class="flex-shrink-0">
+                @if (paper.included) {
+                  <button class="btn-exclude"
+                          [disabled]="isScreening(paper)"
+                          (click)="screen(paper, false)">
+                    @if (isScreening(paper)) {
+                      <span class="spinner-border spinner-border-sm" role="status"></span>
+                    } @else {
+                      Exclude
+                    }
+                  </button>
+                } @else {
+                  <button class="btn-include"
+                          [disabled]="isScreening(paper)"
+                          (click)="screen(paper, true)">
+                    @if (isScreening(paper)) {
+                      <span class="spinner-border spinner-border-sm" role="status"></span>
+                    } @else {
+                      Include
+                    }
+                  </button>
+                }
+              </div>
+            </li>
+          }
+        </ul>
+      }
+    </div>
+  </div>
+}

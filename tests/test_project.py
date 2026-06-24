@@ -71,7 +71,7 @@ class DescribeProject:
 class DescribeSnowball:
     def it_places_a_seed_at_start_0(self, tmp_path):
         project = _project_with(tmp_path, seed="seed")
-        assert project.set_of("seed") == "start-0"
+        assert project.set_of("seed") == "start_set"
 
     def it_places_a_seeds_reference_at_backward_1(self, tmp_path):
         project = _project_with(tmp_path, "a", seed="seed")
@@ -142,7 +142,7 @@ class DescribeSnowball:
         project.exclude("a")
         assert project.set_of("x") == "backward-5"  # re-derived via b@4
         project.exclude("b")
-        assert project.set_of("x") == "orphan--1"  # no included path
+        assert project.set_of("x") == "orphans"  # no included path
         project.include("a")
         assert project.set_of("x") == "backward-2"  # back through a
 
@@ -154,7 +154,7 @@ class DescribeSnowball:
 
     def it_orphans_papers_with_no_path_to_a_seed(self, tmp_path):
         project = _project_with(tmp_path, "lonely", seed="seed")
-        assert project.set_of("lonely") == "orphan--1"
+        assert project.set_of("lonely") == "orphans"
 
     def it_raises_when_an_edge_endpoint_is_missing(self, tmp_path):
         project = _project_with(tmp_path, "a", seed="seed")
@@ -199,7 +199,7 @@ class DescribeProjectPersistence:
         self._saved_project(tmp_path)
         assert (tmp_path / "project.yml").exists()
         assert (tmp_path / "papers" / "seed.yml").exists()
-        assert (tmp_path / "sets" / "start-0.yml").exists()
+        assert (tmp_path / "sets" / "start_set.yml").exists()
         assert (tmp_path / "sets" / "backward-1.yml").exists()
 
     def it_writes_seeds_but_no_paper_sets_in_project_yml(self, tmp_path):
@@ -240,7 +240,7 @@ class DescribeProjectPersistence:
         assert loaded.seeds == project.seeds
         assert loaded.papers["seed"].references == {"a", "b"}
         assert loaded.papers["b"].included is False
-        assert loaded.set_of("seed") == "start-0"
+        assert loaded.set_of("seed") == "start_set"
         assert loaded.set_of("a") == "backward-1"
         assert loaded.set_of("x") == "backward-2"
         assert loaded.set_of("b") == "backward-1"

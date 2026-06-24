@@ -15,17 +15,18 @@ Placement = tuple[str, int]
 class PaperSet(BaseModel):
     """A named set of papers belonging to one snowballing round and direction.
 
-    A set's identity is its `name` (the direction: ``start`` / ``backward`` /
-    ``forward`` / ``orphan``) together with its `round`. It holds bib_id
-    references into the project's canonical paper map rather than paper contents,
-    so resolving members never duplicates a paper.
+    A set's identity is its `name`. For directional sets (``backward`` /
+    ``forward``) `round` is the BFS depth; for the seed set (``start_set``) and
+    unplaced papers (``orphans``) `round` is ``None`` because round is not
+    meaningful. It holds bib_id references into the project's canonical paper
+    map rather than paper contents, so resolving members never duplicates a paper.
 
     Sets are a *projection* of the project's derived placement, materialised for
     the public API and for persistence; they are not the source of truth.
     """
 
     name: str
-    round: int
+    round: int | None
     paper_ids: set[str] = set()
 
     def add(self, bib_id: str) -> None:
@@ -175,12 +176,21 @@ class Project(BaseModel):
 
     # ----- read accessors -----------------------------------------------
 
-    def set_of(self, bib_id: str) -> str:
-        """Return the ``{direction}-{round}`` name of the set holding `bib_id`.
+    _SET_NAMES: ClassVar[dict[tuple[str, int], str]] = {
+        ("start", 0): "start_set",
+        ("orphan", -1): "orphans",
+    }
 
-        Unplaced papers report the orphan set, ``"orphan--1"``.
+    def set_of(self, bib_id: str) -> str:
+        """Return the canonical set name for `bib_id`.
+
+        Seeds → ``"start_set"``; unplaced papers → ``"orphans"``; derived
+        papers → ``"{direction}-{round}"``.
         """
-        direction, round_ = self._placement.get(bib_id, self._ORPHAN)
+        placement = self._placement.get(bib_id, self._ORPHAN)
+        if placement in self._SET_NAMES:
+            return self._SET_NAMES[placement]
+        direction, round_ = placement
         return f"{direction}-{round_}"
 
     def papers_in(self, set_name: str) -> list[Paper]:
@@ -203,13 +213,23 @@ class Project(BaseModel):
 
     def _build_sets(self) -> list[PaperSet]:
         """Materialise the current placement as a list of `PaperSet` projections."""
-        sets: dict[Placement, PaperSet] = {}
+        sets: dict[str, PaperSet] = {}
         for bib_id in self.papers:
-            direction, round_ = self._placement.get(bib_id, self._ORPHAN)
-            paper_set = sets.get((direction, round_))
+            placement = self._placement.get(bib_id, self._ORPHAN)
+            special_name = self._SET_NAMES.get(placement)
+            if special_name is not None:
+                key = special_name
+                name: str = special_name
+                round_: int | None = None
+            else:
+                direction, r = placement
+                key = f"{direction}-{r}"
+                name = direction
+                round_ = r
+            paper_set = sets.get(key)
             if paper_set is None:
-                paper_set = PaperSet(name=direction, round=round_)
-                sets[(direction, round_)] = paper_set
+                paper_set = PaperSet(name=name, round=round_)
+                sets[key] = paper_set
             paper_set.add(bib_id)
         return list(sets.values())
 

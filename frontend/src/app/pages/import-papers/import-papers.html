@@ -1,0 +1,64 @@
+<h1 class="page-title">Search / Import</h1>
+<p class="page-subtitle">Paste a BibTeX entry to import papers into the project.</p>
+
+<div class="panel">
+  <div class="panel-body">
+    <label for="bibtex" class="field-label">BibTeX</label>
+    <textarea
+      id="bibtex"
+      class="bibtex-area"
+      [value]="bibtex()"
+      (input)="setBibtex($any($event.target).value)"
+      placeholder="@article{...}"></textarea>
+
+    <div class="toolbar mt-3">
+      <div class="form-check">
+        <input
+          class="form-check-input"
+          type="checkbox"
+          id="asSeed"
+          [checked]="asSeed()"
+          (change)="setAsSeed($any($event.target).checked)" />
+        <label class="form-check-label" for="asSeed">Import as seed</label>
+      </div>
+      <button
+        class="btn-action ms-auto"
+        (click)="submit()"
+        [disabled]="submitting() || !bibtex().trim()">
+        @if (submitting()) {
+          <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+          Importing…
+        } @else {
+          Import
+        }
+      </button>
+    </div>
+  </div>
+</div>
+
+@if (error()) {
+  <div class="alert-error">{{ error() }}</div>
+}
+
+@if (result(); as r) {
+  @if (r.imported.length > 0) {
+    <div class="alert-ok">
+      <strong>Imported {{ r.imported.length }} paper{{ r.imported.length === 1 ? '' : 's' }}:</strong>
+      <ul class="mb-0 mt-1">
+        @for (id of r.imported; track id) {
+          <li><code>{{ id }}</code></li>
+        }
+      </ul>
+    </div>
+  }
+  @if (r.skipped.length > 0) {
+    <div class="alert-note">
+      <strong>Skipped {{ r.skipped.length }} entr{{ r.skipped.length === 1 ? 'y' : 'ies' }}:</strong>
+      <ul class="mb-0 mt-1">
+        @for (msg of r.skipped; track msg) {
+          <li>{{ msg }}</li>
+        }
+      </ul>
+    </div>
+  }
+}
