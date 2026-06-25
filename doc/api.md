@@ -34,11 +34,27 @@ Get a summary of the current project.
 {
   "name": "my-review",
   "seeds": ["kitchenham2009systematic"],
-  "sets": [
-    { "name": "start", "round": 0, "count": 1 }
-  ]
+  "sets": [{ "name": "start", "round": 0, "count": 1 }],
+  "criteria": [{ "id": "ic1", "name": "Peer reviewed", "type": "inclusion" }],
+  "phases": [{ "id": "title", "name": "Title screening" }],
+  "researchers": [{ "email": "a@b.com", "name": "Ana" }]
 }
 ```
+
+---
+
+#### `PATCH /`
+
+Update project-level settings.
+
+**Request body**
+```json
+{ "decision_strategy": "consensus" }
+```
+
+Valid values: `"majority"` (default), `"consensus"`. Switching strategy recomputes every paper's decision from its reviews and re-derives snowball placement. See [doc/decision.md](decision.md).
+
+**Response** `200 ProjectSummary`
 
 ---
 
@@ -113,7 +129,7 @@ Get a single paper.
   "title": "Systematic literature reviews in software engineering",
   "authors": [{ "family": "Kitchenham", "given": "Barbara", "suffix": null }],
   "year": 2009,
-  "included": true
+  "decision": "undecided"
 }
 ```
 
@@ -123,14 +139,38 @@ Get a single paper.
 
 #### `PATCH /papers/{bib_id}`
 
-Include or exclude a paper (screening). Excluded papers keep their set/round assignment but stop propagating placement to their neighbours.
+Record a researcher's screening assessment for a paper. The include/reject meaning is **derived** from the chosen criterion's `type`; it is not sent in the body.
 
 **Request body**
 ```json
-{ "included": false }
+{
+  "criterion_id": "ic1",
+  "phase_id": "title",
+  "researcher_email": "a@b.com"
+}
 ```
 
-**Response** `200 Paper` — the updated paper.
+**Response** `200 dict[email, Assessment]` — the paper's full assessment map after recording.
+
+**Errors**
+- `404` if the paper, criterion, phase, or researcher does not exist.
+
+---
+
+#### `GET /papers/{bib_id}/assessments`
+
+Get all researcher assessments for a paper.
+
+**Response** `200 dict[email, Assessment]`
+
+```json
+{
+  "a@b.com": {
+    "criterion": {"id": "ic1", "name": "Peer reviewed", "type": "inclusion"},
+    "phase": {"id": "title", "name": "Title screening"}
+  }
+}
+```
 
 **Errors** `404` if the paper does not exist.
 
@@ -153,6 +193,37 @@ Remove a paper from seeds. The paper stays in the project and is re-placed via t
 **Response** `200 ProjectSummary` — the updated project.
 
 **Errors** `404` if the bib_id does not exist or the paper is not currently a seed.
+
+---
+
+### Review — Criteria, Phases, Researchers
+
+#### `GET /criteria` · `POST /criteria` · `PATCH /criteria/{id}` · `DELETE /criteria/{id}`
+
+CRUD for inclusion/exclusion criteria.
+
+- `POST` body: `{"id": "ic1", "name": "Peer reviewed", "type": "inclusion"}` → `201`
+- `PATCH` body: same shape; path `id` is authoritative → `204`
+- `DELETE` → `204`
+- `POST` returns `409` on duplicate id; `PATCH`/`DELETE` return `404` if absent.
+
+#### `GET /phases` · `POST /phases` · `PATCH /phases/{id}` · `DELETE /phases/{id}`
+
+CRUD for reading phases.
+
+- `POST` body: `{"id": "title", "name": "Title screening"}` → `201`
+- `PATCH` body: same shape; path `id` is authoritative → `204`
+- `DELETE` → `204`
+- `POST` returns `409` on duplicate id; `PATCH`/`DELETE` return `404` if absent.
+
+#### `GET /researchers` · `POST /researchers` · `PATCH /researchers/{email}` · `DELETE /researchers/{email}`
+
+CRUD for researchers.
+
+- `POST` body: `{"email": "a@b.com", "name": "Ana"}` → `201`
+- `PATCH` body: same shape; path `email` is authoritative → `204`
+- `DELETE` → `204`
+- `POST` returns `409` on duplicate email; `PATCH`/`DELETE` return `404` if absent.
 
 ---
 

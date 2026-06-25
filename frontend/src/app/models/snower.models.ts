@@ -26,7 +26,9 @@ export interface Paper {
   fields: Record<string, string>;
   references: string[];
   citations: string[];
-  included: boolean;
+  decision: 'included' | 'excluded' | 'undecided';
+  /** Assessment map embedded by GET /sets/{set}/papers (email → Assessment). */
+  assessments?: AssessmentMap;
 }
 
 /** A compact set descriptor returned by GET /sets and used in the project summary. */
@@ -36,17 +38,51 @@ export interface SetSummary {
   count: number;
 }
 
+/** Whether a screening criterion marks inclusion or exclusion. */
+export type CriterionType = 'inclusion' | 'exclusion';
+
+/** A screening criterion belonging to the project. */
+export interface Criterion {
+  id: string;
+  name: string;
+  type: CriterionType;
+}
+
+/** A screening phase belonging to the project. */
+export interface Phase {
+  id: string;
+  name: string;
+}
+
+/** A researcher registered on the project. */
+export interface Researcher {
+  email: string;
+  name: string;
+}
+
+/** A recorded screening decision: which criterion and phase were applied. */
+export interface Assessment {
+  criterion: Criterion;
+  phase: Phase;
+  comment?: string | null;
+}
+
+/** Map of researcher email → Assessment for a single paper. */
+export type AssessmentMap = Record<string, Assessment>;
+
+/** The two available decision strategies. */
+export type DecisionStrategy = 'majority' | 'consensus';
+
 /** A summary of the current single project served by the backend. */
 export interface ProjectSummary {
   name: string;
+  folder: string;
   seeds: string[];
   sets: SetSummary[];
-}
-
-/** Result of a screening (include/exclude) operation. */
-export interface ScreeningResult {
-  bib_id: string;
-  included: boolean | null;
+  criteria: Criterion[];
+  phases: Phase[];
+  researchers: Researcher[];
+  decision_strategy: DecisionStrategy;
 }
 
 /** Outcome of a BibTeX import: ids imported and human-readable skipped entries. */
@@ -62,4 +98,9 @@ export interface ImportResult {
  */
 export function setKey(set: { name: string; round: number | null }): string {
   return set.round !== null ? `${set.name}-${set.round}` : set.name;
+}
+
+/** Returns true when the assessment's criterion marks inclusion. */
+export function isIncluded(a: Assessment): boolean {
+  return a.criterion.type === 'inclusion';
 }

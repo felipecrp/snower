@@ -6,7 +6,22 @@
     <span class="app-brand">
       <i class="bi bi-snow"></i>
       Snower
+      @if (projectName()) {
+        <span class="app-brand-project">{{ projectName() }}</span>
+      }
     </span>
+    <div class="topbar-tools">
+      <label class="researcher-label">Researcher</label>
+      <select class="researcher-select"
+              [value]="session.currentResearcherEmail() ?? ''"
+              (change)="onResearcherChange($event)"
+              aria-label="Current researcher">
+        <option value="">Select researcher</option>
+        @for (r of sortedResearchers(); track r.email) {
+          <option [value]="r.email">{{ r.name }}</option>
+        }
+      </select>
+    </div>
   </nav>
 
   <div class="app-body">

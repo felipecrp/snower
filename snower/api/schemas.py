@@ -1,6 +1,9 @@
 from pydantic import BaseModel
 
+from snower.decision import DecisionStrategyType
+from snower.paper import Paper
 from snower.project import PaperSet
+from snower.review import Assessment, Criterion, Phase, Researcher
 
 
 class ImportRequest(BaseModel):
@@ -9,12 +12,12 @@ class ImportRequest(BaseModel):
 
 
 class ScreeningRequest(BaseModel):
-    included: bool
+    """Body for PATCH /papers/{bib_id}: records a researcher's screening opinion."""
 
-
-class ScreeningResult(BaseModel):
-    bib_id: str
-    included: bool | None
+    criterion_id: str
+    phase_id: str
+    researcher_email: str
+    comment: str | None = None
 
 
 class SetSummary(BaseModel):
@@ -29,10 +32,26 @@ class SetSummary(BaseModel):
 
 class ProjectSummary(BaseModel):
     name: str
+    folder: str
     seeds: list[str]
     sets: list[SetSummary]
+    criteria: list[Criterion] = []
+    phases: list[Phase] = []
+    researchers: list[Researcher] = []
+    decision_strategy: str = "majority"
+
+
+class ProjectUpdate(BaseModel):
+    decision_strategy: DecisionStrategyType
+
+
+class PaperWithAssessments(Paper):
+    """A paper augmented with its full assessment map (email → Assessment)."""
+
+    assessments: dict[str, Assessment] = {}
 
 
 class ImportResult(BaseModel):
     imported: list[str]
     skipped: list[str]
+

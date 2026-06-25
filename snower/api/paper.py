@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from snower.api.project import _summary, get_project
-from snower.api.schemas import ProjectSummary, ScreeningRequest, ScreeningResult
+from snower.api.schemas import PaperWithAssessments, ProjectSummary, ScreeningRequest
 from snower.paper import Paper
 from snower.project import Project
+from snower.review import Assessment
 
 router = APIRouter(prefix="/papers")
 
@@ -23,18 +24,54 @@ def get_paper(bib_id: str, project: Project = Depends(get_project)):
     return paper
 
 
-@router.patch("/{bib_id}", response_model=ScreeningResult)
+@router.patch("/{bib_id}", response_model=PaperWithAssessments)
 def screen_paper(bib_id: str, body: ScreeningRequest, project: Project = Depends(get_project)):
-    """Include or exclude a paper (screening)."""
+    """Record a researcher's screening assessment for a paper.
+
+    Requires criterion_id, phase_id, and researcher_email. The include/reject
+    meaning is derived from the criterion's type; it is not sent in the body.
+    Returns the updated paper including its decision and full assessment map.
+    """
     if bib_id not in project.papers:
         raise HTTPException(status_code=404, detail=f"Paper {bib_id!r} not found")
-    if body.included:
-        project.include(bib_id)
-    else:
-        project.exclude(bib_id)
+    try:
+        project.assess(
+            bib_id,
+            criterion_id=body.criterion_id,
+            phase_id=body.phase_id,
+            researcher_email=body.researcher_email,
+            comment=body.comment,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
     project.save()
     paper = project.papers[bib_id]
-    return ScreeningResult(bib_id=bib_id, included=paper.included)
+    return PaperWithAssessments(**paper.model_dump(), assessments=project.assessments_of(bib_id))
+
+
+@router.get("/{bib_id}/assessments", response_model=dict[str, Assessment])
+def get_assessments(bib_id: str, project: Project = Depends(get_project)):
+    """Get all researcher assessments for a paper (email → Assessment)."""
+    if bib_id not in project.papers:
+        raise HTTPException(status_code=404, detail=f"Paper {bib_id!r} not found")
+    return project.assessments_of(bib_id)
+
+
+@router.delete("/{bib_id}/assessments/{researcher_email}", response_model=PaperWithAssessments)
+def delete_assessment(bib_id: str, researcher_email: str, project: Project = Depends(get_project)):
+    """Remove a researcher's assessment for a paper.
+
+    Returns the updated paper with its recomputed decision and remaining assessments.
+    """
+    if bib_id not in project.papers:
+        raise HTTPException(status_code=404, detail=f"Paper {bib_id!r} not found")
+    try:
+        project.remove_assessment(bib_id, researcher_email)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    project.save()
+    paper = project.papers[bib_id]
+    return PaperWithAssessments(**paper.model_dump(), assessments=project.assessments_of(bib_id))
 
 
 @router.post("/{bib_id}/seed", response_model=ProjectSummary)

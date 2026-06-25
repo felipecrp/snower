@@ -3,11 +3,11 @@
 from pathlib import Path
 
 import bibtexparser
-from bibtexparser.middlewares import SeparateCoAuthors, SplitNameParts
+from bibtexparser.middlewares import LatexDecodingMiddleware, SeparateCoAuthors, SplitNameParts
 
 from snower.paper import Paper, PaperFactory
 
-_MIDDLEWARES = [SeparateCoAuthors(), SplitNameParts()]
+_MIDDLEWARES = [LatexDecodingMiddleware(), SeparateCoAuthors(), SplitNameParts()]
 
 
 def parse_bibtex(text: str) -> list[Paper]:

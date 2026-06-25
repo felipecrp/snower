@@ -43,6 +43,16 @@
   @extend .mb-0;
 }
 
+.app-brand-project {
+  @extend .text-secondary;
+  @extend .fw-normal;
+  @extend .small;
+  &::before {
+    content: '–';
+    margin-right: 0.4rem;
+  }
+}
+
 .app-toggle {
   @extend .btn;
   @extend .btn-light;
@@ -166,9 +176,19 @@
 
 .app-content {
   @extend .p-4;
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
   overflow-y: auto;
+}
+
+// Host class applied to the Setup page component so it fills app-content as a
+// flex item and lets setup-tabs use height: 100% without a fragile calc.
+.setup-page-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .page-title {
@@ -364,6 +384,57 @@
   margin-top: auto;
 }
 
+.snowball-options {
+  @extend .mt-3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.snowball-option-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.snowball-option-heading {
+  @extend .fw-semibold;
+  @extend .text-secondary;
+  @extend .text-uppercase;
+  @extend .small;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.1rem;
+}
+
+.snowball-option-subgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-top: 0.25rem;
+}
+
+.snowball-option-subheading {
+  @extend .text-secondary;
+  @extend .small;
+  font-style: italic;
+  margin-bottom: 0.1rem;
+}
+
+.snowball-option-check {
+  @extend .small;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.snowball-sort-select {
+  @extend .form-select;
+  @extend .form-select-sm;
+  width: 100%;
+}
+
 .paper-list {
   display: flex;
   flex-direction: column;
@@ -385,6 +456,7 @@
 }
 
 .paper-meta {
+  flex: 1;
   min-width: 0;
 }
 
@@ -408,4 +480,240 @@
 .spinner {
   @extend .spinner-border;
   @extend .text-primary;
+}
+
+// ----- Topbar tools ----------------------------------------------------------
+
+.topbar-tools {
+  @extend .ms-auto;
+  @extend .d-flex;
+  @extend .align-items-center;
+  @extend .gap-2;
+}
+
+.researcher-label {
+  @extend .form-label;
+  @extend .text-secondary;
+  @extend .small;
+  @extend .mb-0;
+}
+
+.researcher-select {
+  @extend .form-select;
+  @extend .form-select-sm;
+}
+
+// ----- Assessment controls ---------------------------------------------------
+
+.assess-controls {
+  @extend .d-flex;
+  @extend .align-items-center;
+  @extend .gap-2;
+  @extend .mt-2;
+  @extend .flex-wrap;
+}
+
+.assess-select {
+  @extend .form-select;
+  @extend .form-select-sm;
+  width: auto;
+}
+
+.assess-comment {
+  @extend .form-control;
+  @extend .form-control-sm;
+  flex: 1 1 0;
+  min-width: 8rem;
+}
+
+.assess-hint {
+  @extend .mb-3;
+}
+
+.assessment-detail {
+  @extend .text-secondary;
+}
+
+.votes-table {
+  @extend .small;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+
+  td {
+    padding: 0.1rem 0.6rem 0.1rem 0;
+    vertical-align: middle;
+    border: none;
+  }
+}
+
+.votes-researcher {
+  white-space: nowrap;
+}
+
+.votes-detail {
+  @extend .text-secondary;
+}
+
+.badge-decision {
+  @extend .badge;
+  @extend .rounded-pill;
+  @extend .fw-normal;
+  @extend .text-center;
+  min-width: 6rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.badge-decision-included {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.badge-decision-excluded {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.badge-decision-undecided {
+  background-color: #f3f4f6;
+  color: #6b7280;
+}
+
+// ----- Tab navigation --------------------------------------------------------
+
+.tab-nav {
+  @extend .nav;
+  @extend .nav-tabs;
+  @extend .mb-3;
+  list-style: none;
+  padding: 0;
+  display: flex;
+  gap: 0;
+}
+
+.tab-link {
+  @extend .nav-link;
+  background: none;
+  border: none;
+  cursor: pointer;
+
+  &.is-active {
+    @extend .active;
+  }
+}
+
+.tab-pane {
+  padding-top: 0.25rem;
+}
+
+// ----- Full-height top-tab layout (Setup page) -------------------------------
+
+.setup-tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.setup-tab-nav {
+  @extend .nav;
+  @extend .nav-tabs;
+  @extend .border-bottom;
+  list-style: none;
+  margin: 0;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+}
+
+.setup-tab-content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  @extend .p-4;
+}
+
+// ----- Project info (name / folder) -----------------------------------------
+
+.project-info {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 1.5rem;
+  row-gap: 0.5rem;
+  margin: 0;
+
+  dt {
+    @extend .fw-semibold;
+    @extend .text-secondary;
+    @extend .small;
+    @extend .text-uppercase;
+    padding-top: 0.15rem;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+
+  dd {
+    margin: 0;
+    padding-top: 0.15rem;
+    word-break: break-all;
+  }
+}
+
+// ----- Decision strategy selector -------------------------------------------
+
+.strategy-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.strategy-select {
+  width: auto;
+  min-width: 10rem;
+}
+
+.strategy-hint {
+  @extend .small;
+  @extend .text-secondary;
+  margin: 0;
+}
+
+// ----- Criteria section headings ---------------------------------------------
+
+.criteria-section-heading {
+  @extend .fw-semibold;
+  @extend .text-secondary;
+  @extend .text-uppercase;
+  @extend .small;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+}
+
+// ----- CRUD tables -----------------------------------------------------------
+
+.crud-table {
+  @extend .table;
+  @extend .table-sm;
+
+  .col-id {
+    width: 1px;
+    min-width: 20ch;
+    white-space: nowrap;
+  }
+
+  .col-actions {
+    width: 1px;
+    white-space: nowrap;
+  }
+}
+
+.crud-input {
+  @extend .form-control;
+  @extend .form-control-sm;
+}
+
+.crud-actions {
+  @extend .d-flex;
+  @extend .gap-1;
+  white-space: nowrap;
 }

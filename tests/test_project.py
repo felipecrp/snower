@@ -1,7 +1,7 @@
 import pytest
 import yaml
 
-from snower import Author, Paper, PaperSet, Project
+from snower import Assessment, Author, Criterion, CriterionType, Decision, DecisionStrategyType, Paper, PaperSet, Phase, Project, Researcher
 
 
 def _paper(bib_id: str) -> Paper:
@@ -186,6 +186,306 @@ class DescribeSnowball:
         assert cites == {"a"}  # b is not a forward neighbour of seed
 
 
+def _criterion(id="ic1", name="Peer reviewed", type=CriterionType.inclusion):
+    return Criterion(id=id, name=name, type=type)
+
+
+def _phase(id="title", name="Title screening"):
+    return Phase(id=id, name=name)
+
+
+def _researcher(email="a@b.com", name="Ana"):
+    return Researcher(email=email, name=name)
+
+
+class DescribeCriteria:
+    def it_adds_a_criterion(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_criterion(_criterion())
+        assert len(project.criteria) == 1
+        assert project.criteria[0].id == "ic1"
+
+    def it_rejects_duplicate_id(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_criterion(_criterion())
+        with pytest.raises(ValueError, match="already exists"):
+            project.add_criterion(_criterion())
+
+    def it_updates_name_and_type(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_criterion(_criterion())
+        project.update_criterion("ic1", name="Updated", type=CriterionType.exclusion)
+        c = project.criteria[0]
+        assert c.name == "Updated"
+        assert c.type == CriterionType.exclusion
+
+    def it_raises_update_for_unknown_id(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        with pytest.raises(KeyError):
+            project.update_criterion("ghost", name="x", type=CriterionType.inclusion)
+
+    def it_removes_a_criterion(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_criterion(_criterion())
+        project.remove_criterion("ic1")
+        assert project.criteria == []
+
+    def it_raises_remove_for_unknown_id(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        with pytest.raises(KeyError):
+            project.remove_criterion("ghost")
+
+
+class DescribeCriteriaRename:
+    def it_renames_criterion_id(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_criterion(_criterion("ic1"))
+        project.rename_criterion("ic1", "ic2")
+        assert project.criteria[0].id == "ic2"
+        assert not any(c.id == "ic1" for c in project.criteria)
+
+    def it_updates_assessments_on_rename(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_seed(_paper("seed"))
+        project.add_criterion(_criterion("ic1"))
+        project.add_phase(_phase())
+        project.add_researcher(_researcher())
+        project.assess("seed", criterion_id="ic1", phase_id="title", researcher_email="a@b.com")
+        project.rename_criterion("ic1", "ic2")
+        assert project.assessments["a@b.com"]["seed"].criterion.id == "ic2"
+
+    def it_rejects_rename_to_existing_id(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_criterion(_criterion("ic1"))
+        project.add_criterion(_criterion("ic2", "Another"))
+        with pytest.raises(ValueError, match="already exists"):
+            project.rename_criterion("ic1", "ic2")
+
+    def it_raises_rename_for_unknown_id(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        with pytest.raises(KeyError):
+            project.rename_criterion("ghost", "new")
+
+
+class DescribePhases:
+    def it_adds_a_phase(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_phase(_phase())
+        assert len(project.phases) == 1
+
+    def it_rejects_duplicate_id(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_phase(_phase())
+        with pytest.raises(ValueError, match="already exists"):
+            project.add_phase(_phase())
+
+    def it_updates_name(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_phase(_phase())
+        project.update_phase("title", name="Updated")
+        assert project.phases[0].name == "Updated"
+
+    def it_raises_update_for_unknown_id(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        with pytest.raises(KeyError):
+            project.update_phase("ghost", name="x")
+
+    def it_removes_a_phase(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_phase(_phase())
+        project.remove_phase("title")
+        assert project.phases == []
+
+    def it_raises_remove_for_unknown_id(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        with pytest.raises(KeyError):
+            project.remove_phase("ghost")
+
+
+class DescribePhasesRename:
+    def it_renames_phase_id(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_phase(_phase("title"))
+        project.rename_phase("title", "abstract")
+        assert project.phases[0].id == "abstract"
+
+    def it_updates_assessments_on_rename(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_seed(_paper("seed"))
+        project.add_criterion(_criterion())
+        project.add_phase(_phase("title"))
+        project.add_researcher(_researcher())
+        project.assess("seed", criterion_id="ic1", phase_id="title", researcher_email="a@b.com")
+        project.rename_phase("title", "abstract")
+        assert project.assessments["a@b.com"]["seed"].phase.id == "abstract"
+
+    def it_rejects_rename_to_existing_id(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_phase(_phase("title"))
+        project.add_phase(_phase("abstract", "Abstract screening"))
+        with pytest.raises(ValueError, match="already exists"):
+            project.rename_phase("title", "abstract")
+
+    def it_raises_rename_for_unknown_id(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        with pytest.raises(KeyError):
+            project.rename_phase("ghost", "new")
+
+
+class DescribeResearchers:
+    def it_adds_a_researcher(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_researcher(_researcher())
+        assert len(project.researchers) == 1
+
+    def it_rejects_duplicate_email(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_researcher(_researcher())
+        with pytest.raises(ValueError, match="already exists"):
+            project.add_researcher(_researcher())
+
+    def it_updates_name(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_researcher(_researcher())
+        project.update_researcher("a@b.com", name="Ana Updated")
+        assert project.researchers[0].name == "Ana Updated"
+
+    def it_raises_update_for_unknown_email(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        with pytest.raises(KeyError):
+            project.update_researcher("ghost@x.com", name="x")
+
+    def it_removes_a_researcher(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_researcher(_researcher())
+        project.remove_researcher("a@b.com")
+        assert project.researchers == []
+
+    def it_raises_remove_for_unknown_email(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        with pytest.raises(KeyError):
+            project.remove_researcher("ghost@x.com")
+
+
+class DescribeResearchersRename:
+    def it_renames_researcher_email(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_researcher(_researcher("a@b.com"))
+        project.rename_researcher("a@b.com", "new@b.com")
+        assert project.researchers[0].email == "new@b.com"
+
+    def it_moves_assessments_on_rename(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_seed(_paper("seed"))
+        project.add_criterion(_criterion())
+        project.add_phase(_phase())
+        project.add_researcher(_researcher("a@b.com"))
+        project.assess("seed", criterion_id="ic1", phase_id="title", researcher_email="a@b.com")
+        project.rename_researcher("a@b.com", "new@b.com")
+        assert "new@b.com" in project.assessments
+        assert "a@b.com" not in project.assessments
+
+    def it_rejects_rename_to_existing_email(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_researcher(_researcher("a@b.com"))
+        project.add_researcher(_researcher("b@b.com", "Bob"))
+        with pytest.raises(ValueError, match="already exists"):
+            project.rename_researcher("a@b.com", "b@b.com")
+
+    def it_raises_rename_for_unknown_email(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        with pytest.raises(KeyError):
+            project.rename_researcher("ghost@x.com", "new@x.com")
+
+
+class DescribeAssessment:
+    def _project_with_review(self, tmp_path):
+        project = Project(name="p", path=tmp_path)
+        project.add_seed(_paper("seed"))
+        project.add_criterion(_criterion("ic1", "Peer reviewed", CriterionType.inclusion))
+        project.add_criterion(_criterion("ec1", "Out of scope", CriterionType.exclusion))
+        project.add_phase(_phase())
+        project.add_researcher(_researcher("a@b.com", "Ana"))
+        project.add_researcher(_researcher("b@b.com", "Bob"))
+        return project
+
+    def it_records_a_researchers_assessment(self, tmp_path):
+        project = self._project_with_review(tmp_path)
+        project.assess("seed", criterion_id="ic1", phase_id="title", researcher_email="a@b.com")
+        assert "a@b.com" in project.assessments
+        assert "seed" in project.assessments["a@b.com"]
+
+    def it_two_researchers_produce_two_entries(self, tmp_path):
+        project = self._project_with_review(tmp_path)
+        project.assess("seed", criterion_id="ic1", phase_id="title", researcher_email="a@b.com")
+        project.assess("seed", criterion_id="ec1", phase_id="title", researcher_email="b@b.com")
+        result = project.assessments_of("seed")
+        assert set(result.keys()) == {"a@b.com", "b@b.com"}
+
+    def it_overwrites_when_same_researcher_reassesses(self, tmp_path):
+        project = self._project_with_review(tmp_path)
+        project.assess("seed", criterion_id="ic1", phase_id="title", researcher_email="a@b.com")
+        project.assess("seed", criterion_id="ec1", phase_id="title", researcher_email="a@b.com")
+        assert project.assessments["a@b.com"]["seed"].criterion.id == "ec1"
+
+    def it_derives_included_from_criterion_type(self, tmp_path):
+        project = self._project_with_review(tmp_path)
+        project.assess("seed", criterion_id="ic1", phase_id="title", researcher_email="a@b.com")
+        assert project.assessments["a@b.com"]["seed"].included is True
+        project.assess("seed", criterion_id="ec1", phase_id="title", researcher_email="a@b.com")
+        assert project.assessments["a@b.com"]["seed"].included is False
+
+    def it_sets_paper_decision_after_assess(self, tmp_path):
+        project = self._project_with_review(tmp_path)
+        project.assess("seed", criterion_id="ec1", phase_id="title", researcher_email="a@b.com")
+        assert project.papers["seed"].decision == Decision.excluded
+
+    def it_sets_included_decision_on_inclusion_criterion(self, tmp_path):
+        project = self._project_with_review(tmp_path)
+        project.assess("seed", criterion_id="ic1", phase_id="title", researcher_email="a@b.com")
+        assert project.papers["seed"].decision == Decision.included
+
+    def it_rejects_unknown_criterion(self, tmp_path):
+        project = self._project_with_review(tmp_path)
+        with pytest.raises(KeyError):
+            project.assess("seed", criterion_id="ghost", phase_id="title", researcher_email="a@b.com")
+
+    def it_rejects_unknown_phase(self, tmp_path):
+        project = self._project_with_review(tmp_path)
+        with pytest.raises(KeyError):
+            project.assess("seed", criterion_id="ic1", phase_id="ghost", researcher_email="a@b.com")
+
+    def it_rejects_unknown_researcher(self, tmp_path):
+        project = self._project_with_review(tmp_path)
+        with pytest.raises(KeyError):
+            project.assess("seed", criterion_id="ic1", phase_id="title", researcher_email="ghost@x.com")
+
+    def it_round_trips_assessments_through_save_and_load(self, tmp_path):
+        project = self._project_with_review(tmp_path)
+        project.add_paper(_full_paper("seed"))  # ensure save-able
+        # save requires complete papers; use full paper for seed
+        project2 = Project(name="p", path=tmp_path)
+        project2.add_seed(_full_paper("seed"))
+        project2.add_criterion(_criterion("ic1", "Peer reviewed", CriterionType.inclusion))
+        project2.add_phase(_phase())
+        project2.add_researcher(_researcher("a@b.com", "Ana"))
+        project2.assess("seed", criterion_id="ic1", phase_id="title", researcher_email="a@b.com")
+        project2.save()
+        loaded = Project.load(tmp_path)
+        assert "a@b.com" in loaded.assessments
+        assert "seed" in loaded.assessments["a@b.com"]
+        assert loaded.assessments["a@b.com"]["seed"].criterion.id == "ic1"
+
+    def it_assessments_of_gathers_a_papers_entries(self, tmp_path):
+        project = self._project_with_review(tmp_path)
+        project.assess("seed", criterion_id="ic1", phase_id="title", researcher_email="a@b.com")
+        project.assess("seed", criterion_id="ec1", phase_id="title", researcher_email="b@b.com")
+        result = project.assessments_of("seed")
+        assert isinstance(result, dict)
+        assert result["a@b.com"].criterion.id == "ic1"
+        assert result["b@b.com"].criterion.id == "ec1"
+
+
 class DescribeProjectPersistence:
     def _saved_project(self, tmp_path) -> Project:
         project = Project(name="slr", path=tmp_path)
@@ -202,14 +502,19 @@ class DescribeProjectPersistence:
         assert (tmp_path / "sets" / "start_set.yml").exists()
         assert (tmp_path / "sets" / "backward-1.yml").exists()
 
-    def it_writes_seeds_but_no_paper_sets_in_project_yml(self, tmp_path):
+    def it_writes_name_but_not_seeds_or_paper_sets_in_project_yml(self, tmp_path):
         self._saved_project(tmp_path)
         data = yaml.safe_load((tmp_path / "project.yml").read_text(encoding="utf-8"))
         assert data["name"] == "slr"
-        assert data["seeds"] == ["seed"]
+        assert "seeds" not in data
         assert "paper_sets" not in data
         assert "path" not in data
         assert "papers" not in data
+
+    def it_writes_seeds_to_start_set_yml(self, tmp_path):
+        self._saved_project(tmp_path)
+        start_data = yaml.safe_load((tmp_path / "sets" / "start_set.yml").read_text(encoding="utf-8"))
+        assert "seed" in start_data["paper_ids"]
 
     def it_removes_a_set_file_when_it_empties(self, tmp_path):
         project = self._saved_project(tmp_path)
@@ -224,7 +529,7 @@ class DescribeProjectPersistence:
         assert not (tmp_path / "sets" / "backward-1.yml").exists()
         assert (tmp_path / "sets" / "forward-1.yml").exists()
 
-    def it_round_trips_seeds_edges_inclusion_and_placement(self, tmp_path):
+    def it_round_trips_seeds_edges_decision_and_placement(self, tmp_path):
         project = Project(name="slr", path=tmp_path)
         project.add_seed(_full_paper("seed"))
         for bib_id in ("a", "b", "x"):
@@ -232,15 +537,38 @@ class DescribeProjectPersistence:
         project.add_reference("seed", "a")
         project.add_reference("a", "x")
         project.add_reference("seed", "b")
-        project.exclude("b")
+        project.add_criterion(_criterion("ec1", "Out of scope", CriterionType.exclusion))
+        project.add_phase(_phase())
+        project.add_researcher(_researcher())
+        project.assess("b", criterion_id="ec1", phase_id="title", researcher_email="a@b.com")
+        assert project.papers["b"].decision == Decision.excluded
         project.save()
 
         loaded = Project.load(tmp_path)
         assert loaded.name == project.name
         assert loaded.seeds == project.seeds
         assert loaded.papers["seed"].references == {"a", "b"}
-        assert loaded.papers["b"].included is False
+        assert loaded.papers["b"].decision == Decision.excluded
         assert loaded.set_of("seed") == "start_set"
         assert loaded.set_of("a") == "backward-1"
         assert loaded.set_of("x") == "backward-2"
         assert loaded.set_of("b") == "backward-1"
+
+    def it_recomputes_decisions_when_strategy_changes(self, tmp_path):
+        project = Project(name="slr", path=tmp_path)
+        project.add_seed(_full_paper("seed"))
+        project.add_criterion(_criterion("ic1", "Peer reviewed", CriterionType.inclusion))
+        project.add_criterion(_criterion("ec1", "Out of scope", CriterionType.exclusion))
+        project.add_phase(_phase())
+        project.add_researcher(_researcher("a@b.com", "Ana"))
+        project.add_researcher(_researcher("b@b.com", "Bob"))
+        # one inclusion, one exclusion — majority → undecided; consensus → undecided
+        project.assess("seed", criterion_id="ic1", phase_id="title", researcher_email="a@b.com")
+        project.assess("seed", criterion_id="ec1", phase_id="title", researcher_email="b@b.com")
+        assert project.papers["seed"].decision == Decision.undecided
+        # switching strategy shouldn't change a tie under either algorithm
+        project.set_decision_strategy(DecisionStrategyType.consensus)
+        assert project.papers["seed"].decision == Decision.undecided
+        # unanimous inclusion under consensus → included
+        project.assess("seed", criterion_id="ic1", phase_id="title", researcher_email="b@b.com")
+        assert project.papers["seed"].decision == Decision.included

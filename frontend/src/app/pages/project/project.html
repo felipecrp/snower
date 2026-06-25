@@ -5,39 +5,227 @@
 } @else if (error()) {
   <div class="alert-error">{{ error() }}</div>
 } @else if (project(); as p) {
-  <h1 class="page-title">{{ p.name }}</h1>
-  <p class="page-subtitle">{{ p.seeds.length }} seed paper{{ p.seeds.length === 1 ? '' : 's' }}</p>
 
-  <div class="panel">
-    <div class="panel-body">
-      <h2 class="panel-title">Seeds</h2>
-      @if (p.seeds.length === 0) {
-        <p class="empty-state">No seeds imported yet.</p>
-      } @else {
-        <ul class="list-unstyled mb-0">
-          @for (seed of p.seeds; track seed) {
-            <li class="py-1 text-monospace small">{{ seed }}</li>
-          }
-        </ul>
-      }
-    </div>
-  </div>
+  <div class="setup-tabs">
+    <!-- Tab strip (top row) -->
+    <ul class="setup-tab-nav">
+      <li>
+        <button class="tab-link" [class.is-active]="activeTab() === 'project'" (click)="setTab('project')">Project</button>
+      </li>
+      <li>
+        <button class="tab-link" [class.is-active]="activeTab() === 'criteria'" (click)="setTab('criteria')">Criteria</button>
+      </li>
+      <li>
+        <button class="tab-link" [class.is-active]="activeTab() === 'phases'" (click)="setTab('phases')">Phases</button>
+      </li>
+      <li>
+        <button class="tab-link" [class.is-active]="activeTab() === 'researchers'" (click)="setTab('researchers')">Researchers</button>
+      </li>
+    </ul>
 
-  <h2 class="panel-title mt-4 mb-3">Sets</h2>
-  @if (p.sets.length === 0) {
-    <p class="empty-state">No sets derived yet.</p>
-  } @else {
-    <div class="stat-grid">
-      @for (set of p.sets; track set.name + set.round) {
-        <div class="stat-col">
-          <div class="stat-card">
-            <div class="panel-body">
-              <div class="stat-value">{{ set.count }}</div>
-              <div class="stat-label">{{ set.name }} · round {{ set.round }}</div>
-            </div>
-          </div>
+    <!-- Tab content -->
+    <div class="setup-tab-content">
+
+      <!-- Project tab -->
+      @if (activeTab() === 'project') {
+        <div class="tab-pane">
+          <dl class="project-info">
+            <dt>Name</dt>
+            <dd>{{ p.name }}</dd>
+            <dt>Path</dt>
+            <dd class="text-monospace small">{{ p.folder }}</dd>
+            <dt>Decision Strategy</dt>
+            <dd class="strategy-field">
+              <select class="form-select form-select-sm strategy-select"
+                      (change)="onStrategyChange($event)"
+                      aria-label="Decision strategy">
+                <option value="majority" [selected]="p.decision_strategy === 'majority'">Majority</option>
+                <option value="consensus" [selected]="p.decision_strategy === 'consensus'">Consensus</option>
+              </select>
+              @if (p.decision_strategy === 'majority') {
+                <p class="strategy-hint">Most votes win. Ties stay <em>undecided</em>. Missing reviews are ignored.</p>
+              } @else {
+                <p class="strategy-hint">All votes must be the same. No consensus stays <em>undecided</em>. Missing reviews are ignored.</p>
+              }
+              @if (strategyError()) {
+                <div class="alert-error mt-1">{{ strategyError() }}</div>
+              }
+            </dd>
+          </dl>
         </div>
       }
+
+      <!-- Criteria tab -->
+      @if (activeTab() === 'criteria') {
+        <div class="tab-pane">
+          @if (criterionError()) {
+            <div class="alert-error mb-2">{{ criterionError() }}</div>
+          }
+
+          <p class="criteria-section-heading">Inclusion</p>
+          <table class="crud-table">
+            <colgroup><col class="col-id"><col><col class="col-actions"></colgroup>
+            <thead>
+              <tr><th>ID</th><th>Name</th><th></th></tr>
+            </thead>
+            <tbody>
+              @for (c of sortedCriteria(); track c.id) {
+                @if (c.type === 'inclusion') {
+                  <tr>
+                    @if (editingCriterion() === c.id) {
+                      <td><input class="crud-input text-monospace small" [value]="editCriterionId()" (input)="editCriterionId.set($any($event.target).value)" /></td>
+                      <td><input class="crud-input" [value]="editCriterionName()" (input)="editCriterionName.set($any($event.target).value)" /></td>
+                      <td class="crud-actions">
+                        <button class="btn-action btn-sm" (click)="saveEditCriterion(c.id)">Save</button>
+                        <button class="btn-ghost btn-sm" (click)="editingCriterion.set(null)">Cancel</button>
+                      </td>
+                    } @else {
+                      <td class="text-monospace small">{{ c.id }}</td>
+                      <td>{{ c.name }}</td>
+                      <td class="crud-actions">
+                        <button class="btn-ghost btn-sm" (click)="startEditCriterion(c)">Edit</button>
+                        <button class="btn-exclude" (click)="deleteCriterion(c.id)">Delete</button>
+                      </td>
+                    }
+                  </tr>
+                }
+              }
+              <tr>
+                <td><input class="crud-input" placeholder="id" [value]="newInclusionId()" (input)="newInclusionId.set($any($event.target).value)" /></td>
+                <td><input class="crud-input" placeholder="name" [value]="newInclusionName()" (input)="newInclusionName.set($any($event.target).value)" /></td>
+                <td><button class="btn-action btn-sm" (click)="addInclusionCriterion()">Add</button></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p class="criteria-section-heading mt-4">Exclusion</p>
+          <table class="crud-table">
+            <colgroup><col class="col-id"><col><col class="col-actions"></colgroup>
+            <thead>
+              <tr><th>ID</th><th>Name</th><th></th></tr>
+            </thead>
+            <tbody>
+              @for (c of sortedCriteria(); track c.id) {
+                @if (c.type === 'exclusion') {
+                  <tr>
+                    @if (editingCriterion() === c.id) {
+                      <td><input class="crud-input text-monospace small" [value]="editCriterionId()" (input)="editCriterionId.set($any($event.target).value)" /></td>
+                      <td><input class="crud-input" [value]="editCriterionName()" (input)="editCriterionName.set($any($event.target).value)" /></td>
+                      <td class="crud-actions">
+                        <button class="btn-action btn-sm" (click)="saveEditCriterion(c.id)">Save</button>
+                        <button class="btn-ghost btn-sm" (click)="editingCriterion.set(null)">Cancel</button>
+                      </td>
+                    } @else {
+                      <td class="text-monospace small">{{ c.id }}</td>
+                      <td>{{ c.name }}</td>
+                      <td class="crud-actions">
+                        <button class="btn-ghost btn-sm" (click)="startEditCriterion(c)">Edit</button>
+                        <button class="btn-exclude" (click)="deleteCriterion(c.id)">Delete</button>
+                      </td>
+                    }
+                  </tr>
+                }
+              }
+              <tr>
+                <td><input class="crud-input" placeholder="id" [value]="newExclusionId()" (input)="newExclusionId.set($any($event.target).value)" /></td>
+                <td><input class="crud-input" placeholder="name" [value]="newExclusionName()" (input)="newExclusionName.set($any($event.target).value)" /></td>
+                <td><button class="btn-action btn-sm" (click)="addExclusionCriterion()">Add</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      }
+
+      <!-- Phases tab -->
+      @if (activeTab() === 'phases') {
+        <div class="tab-pane">
+          @if (phaseError()) {
+            <div class="alert-error mb-2">{{ phaseError() }}</div>
+          }
+          <table class="crud-table">
+            <colgroup><col class="col-id"><col><col class="col-actions"></colgroup>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (ph of sortedPhases(); track ph.id) {
+                <tr>
+                  @if (editingPhase() === ph.id) {
+                    <td><input class="crud-input text-monospace small" [value]="editPhaseId()" (input)="editPhaseId.set($any($event.target).value)" /></td>
+                    <td><input class="crud-input" [value]="editPhaseName()" (input)="editPhaseName.set($any($event.target).value)" /></td>
+                    <td class="crud-actions">
+                      <button class="btn-action btn-sm" (click)="saveEditPhase(ph.id)">Save</button>
+                      <button class="btn-ghost btn-sm" (click)="editingPhase.set(null)">Cancel</button>
+                    </td>
+                  } @else {
+                    <td class="text-monospace small">{{ ph.id }}</td>
+                    <td>{{ ph.name }}</td>
+                    <td class="crud-actions">
+                      <button class="btn-ghost btn-sm" (click)="startEditPhase(ph)">Edit</button>
+                      <button class="btn-exclude" (click)="deletePhase(ph.id)">Delete</button>
+                    </td>
+                  }
+                </tr>
+              }
+              <tr>
+                <td><input class="crud-input" placeholder="id" [value]="newPhaseId()" (input)="newPhaseId.set($any($event.target).value)" /></td>
+                <td><input class="crud-input" placeholder="name" [value]="newPhaseName()" (input)="newPhaseName.set($any($event.target).value)" /></td>
+                <td><button class="btn-action btn-sm" (click)="addPhase()">Add</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      }
+
+      <!-- Researchers tab -->
+      @if (activeTab() === 'researchers') {
+        <div class="tab-pane">
+          @if (researcherError()) {
+            <div class="alert-error mb-2">{{ researcherError() }}</div>
+          }
+          <table class="crud-table">
+            <colgroup><col class="col-id"><col><col class="col-actions"></colgroup>
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Name</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of sortedResearchers(); track r.email) {
+                <tr>
+                  @if (editingResearcher() === r.email) {
+                    <td><input class="crud-input text-monospace small" [value]="editResearcherEmail()" (input)="editResearcherEmail.set($any($event.target).value)" /></td>
+                    <td><input class="crud-input" [value]="editResearcherName()" (input)="editResearcherName.set($any($event.target).value)" /></td>
+                    <td class="crud-actions">
+                      <button class="btn-action btn-sm" (click)="saveEditResearcher(r.email)">Save</button>
+                      <button class="btn-ghost btn-sm" (click)="editingResearcher.set(null)">Cancel</button>
+                    </td>
+                  } @else {
+                    <td class="text-monospace small">{{ r.email }}</td>
+                    <td>{{ r.name }}</td>
+                    <td class="crud-actions">
+                      <button class="btn-ghost btn-sm" (click)="startEditResearcher(r)">Edit</button>
+                      <button class="btn-exclude" (click)="deleteResearcher(r.email)">Delete</button>
+                    </td>
+                  }
+                </tr>
+              }
+              <tr>
+                <td><input class="crud-input" placeholder="email" [value]="newResearcherEmail()" (input)="newResearcherEmail.set($any($event.target).value)" /></td>
+                <td><input class="crud-input" placeholder="name" [value]="newResearcherName()" (input)="newResearcherName.set($any($event.target).value)" /></td>
+                <td><button class="btn-action btn-sm" (click)="addResearcher()">Add</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      }
+
     </div>
-  }
+  </div>
 }

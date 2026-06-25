@@ -1,8 +1,11 @@
+import re
 import string
 from enum import Enum
 from pathlib import Path
 
 from pydantic import BaseModel
+
+from snower.decision import Decision
 
 
 class EntryType(str, Enum):
@@ -64,8 +67,10 @@ class Paper(BaseModel):
     imply ``A ∈ B.citations``. Round and direction are *not* stored on the paper —
     they are derived by `Project` from the graph.
 
-    `included` is the screening flag. An excluded paper keeps its own derived
-    set/round but does **not** propagate placement to its neighbours.
+    `decision` is the three-state screening outcome (`included` / `excluded` /
+    `undecided`). It is recomputed by the project's decision strategy each time a
+    review is recorded. Only `excluded` papers halt propagation; `undecided` papers
+    still propagate so snowballing works before any screening takes place.
     """
 
     entry_type: EntryType = EntryType.misc
@@ -79,7 +84,7 @@ class Paper(BaseModel):
     fields: dict[str, str] = {}
     references: set[str] = set()
     citations: set[str] = set()
-    included: bool = True
+    decision: Decision = Decision.undecided
 
     def add_reference(self, bib_id: str) -> None:
         """Record that this paper cites ``bib_id`` (backward side).
@@ -107,6 +112,15 @@ class PaperFactory:
     _KNOWN_FIELDS = {"title", "author", "year", "abstract", "doi", "url"}
 
     @staticmethod
+    def _strip_latex(text: str) -> str:
+        """Strip LaTeX accent commands, keeping the base letter: {\"a} -> a."""
+        # Accent commands like {\"a}, {\'e}, {\`o}, {\^i}, {\~n}, {\.c}
+        text = re.sub(r'\{\\[^a-zA-Z}][^}]?\}', lambda m: m.group()[-2], text)
+        # Named commands like {\ss}, {\ae}, {\i} — remove
+        text = re.sub(r'\{\\[a-zA-Z]+\}', '', text)
+        return text.replace('{', '').replace('}', '')
+
+    @staticmethod
     def _first_relevant_title_word(title: str) -> str | None:
         """Return the first whitespace-delimited title token of length ≥ 5, lowercased and stripped of punctuation."""
         for token in title.split():
@@ -118,7 +132,7 @@ class PaperFactory:
     @staticmethod
     def _compute_bib_id(title: str, authors: list[Author], year: int | None) -> str | None:
         """Compute the bib_id as `{first_author_surname}{year}{first_relevant_title_word}`, e.g. `kitchenham2009systematic`."""
-        surname = authors[0].family.lower() if authors else None
+        surname = PaperFactory._strip_latex(authors[0].family.lower()) if authors else None
         title_word = PaperFactory._first_relevant_title_word(title)
         yr = str(year) if year else None
         if not (surname and title_word and yr):

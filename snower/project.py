@@ -4,8 +4,10 @@ from typing import ClassVar
 import yaml
 from pydantic import BaseModel, PrivateAttr
 
+from snower.decision import Decision, DecisionStrategyType, strategy_for
 from snower.paper import Paper
-from snower.repository import PaperRepository, SetRepository
+from snower.repository import PaperRepository, ReviewRepository, SetRepository
+from snower.review import Assessment, Criterion, CriterionType, Phase, Researcher
 
 # A placement is (direction, round). Directions are ordered for tie-breaking:
 # at equal round, "backward" beats "forward" (rule 6). Seeds sit at ("start", 0).
@@ -56,10 +58,17 @@ class Project(BaseModel):
     path: Path
     papers: dict[str, Paper] = {}
     seeds: set[str] = set()
+    criteria: list[Criterion] = []
+    phases: list[Phase] = []
+    researchers: list[Researcher] = []
+    # researcher_email -> { bib_id -> latest Assessment }
+    assessments: dict[str, dict[str, Assessment]] = {}
+    decision_strategy: DecisionStrategyType = DecisionStrategyType.majority
 
     _METADATA_FILE: ClassVar[str] = "project.yml"
     _PAPERS_DIR: ClassVar[str] = "papers"
     _SETS_DIR: ClassVar[str] = "sets"
+    _REVIEW_DIR: ClassVar[str] = "review"
     _ORPHAN: ClassVar[Placement] = ("orphan", -1)
 
     # Derived set membership: bib_id -> (direction, round). Seeds map to
@@ -127,24 +136,217 @@ class Project(BaseModel):
         if citing_id == cited_id:
             raise ValueError(f"A paper cannot cite itself: {citing_id!r}")
 
+    # ----- criteria -------------------------------------------------------
+
+    def add_criterion(self, criterion: Criterion) -> None:
+        """Append a criterion, raising ValueError on duplicate id."""
+        if any(c.id == criterion.id for c in self.criteria):
+            raise ValueError(f"Criterion {criterion.id!r} already exists")
+        self.criteria.append(criterion)
+
+    def _require_criterion(self, id: str) -> Criterion:
+        """Return the criterion with the given id, or raise KeyError."""
+        for c in self.criteria:
+            if c.id == id:
+                return c
+        raise KeyError(f"Unknown criterion {id!r}")
+
+    def update_criterion(self, id: str, *, name: str, type: CriterionType) -> None:
+        """Replace a criterion's mutable fields in place, keyed by its immutable id."""
+        c = self._require_criterion(id)
+        c.name = name
+        c.type = type
+
+    def remove_criterion(self, id: str) -> None:
+        """Remove the criterion with the given id, raising KeyError if absent."""
+        self._require_criterion(id)
+        self.criteria = [c for c in self.criteria if c.id != id]
+
+    def rename_criterion(self, old_id: str, new_id: str) -> None:
+        """Rename a criterion's id, updating all assessments that reference it.
+
+        Raises KeyError if old_id is unknown, ValueError if new_id already exists.
+        """
+        if any(c.id == new_id for c in self.criteria):
+            raise ValueError(f"Criterion {new_id!r} already exists")
+        c = self._require_criterion(old_id)
+        c.id = new_id
+        for papers in self.assessments.values():
+            for assessment in papers.values():
+                if assessment.criterion.id == old_id:
+                    assessment.criterion.id = new_id
+
+    # ----- phases ---------------------------------------------------------
+
+    def add_phase(self, phase: Phase) -> None:
+        """Append a phase, raising ValueError on duplicate id."""
+        if any(p.id == phase.id for p in self.phases):
+            raise ValueError(f"Phase {phase.id!r} already exists")
+        self.phases.append(phase)
+
+    def _require_phase(self, id: str) -> Phase:
+        """Return the phase with the given id, or raise KeyError."""
+        for p in self.phases:
+            if p.id == id:
+                return p
+        raise KeyError(f"Unknown phase {id!r}")
+
+    def update_phase(self, id: str, *, name: str) -> None:
+        """Replace a phase's mutable fields in place, keyed by its immutable id."""
+        p = self._require_phase(id)
+        p.name = name
+
+    def remove_phase(self, id: str) -> None:
+        """Remove the phase with the given id, raising KeyError if absent."""
+        self._require_phase(id)
+        self.phases = [p for p in self.phases if p.id != id]
+
+    def rename_phase(self, old_id: str, new_id: str) -> None:
+        """Rename a phase's id, updating all assessments that reference it.
+
+        Raises KeyError if old_id is unknown, ValueError if new_id already exists.
+        """
+        if any(p.id == new_id for p in self.phases):
+            raise ValueError(f"Phase {new_id!r} already exists")
+        p = self._require_phase(old_id)
+        p.id = new_id
+        for papers in self.assessments.values():
+            for assessment in papers.values():
+                if assessment.phase.id == old_id:
+                    assessment.phase.id = new_id
+
+    # ----- researchers ----------------------------------------------------
+
+    def add_researcher(self, researcher: Researcher) -> None:
+        """Append a researcher, raising ValueError on duplicate email."""
+        if any(r.email == researcher.email for r in self.researchers):
+            raise ValueError(f"Researcher {researcher.email!r} already exists")
+        self.researchers.append(researcher)
+
+    def _require_researcher(self, email: str) -> Researcher:
+        """Return the researcher with the given email, or raise KeyError."""
+        for r in self.researchers:
+            if r.email == email:
+                return r
+        raise KeyError(f"Unknown researcher {email!r}")
+
+    def update_researcher(self, email: str, *, name: str) -> None:
+        """Replace a researcher's mutable fields in place, keyed by email."""
+        r = self._require_researcher(email)
+        r.name = name
+
+    def remove_researcher(self, email: str) -> None:
+        """Remove the researcher with the given email, raising KeyError if absent."""
+        self._require_researcher(email)
+        self.researchers = [r for r in self.researchers if r.email != email]
+
+    def rename_researcher(self, old_email: str, new_email: str) -> None:
+        """Rename a researcher's email, moving their assessments to the new key.
+
+        Raises KeyError if old_email is unknown, ValueError if new_email already exists.
+        """
+        if any(r.email == new_email for r in self.researchers):
+            raise ValueError(f"Researcher {new_email!r} already exists")
+        r = self._require_researcher(old_email)
+        r.email = new_email
+        if old_email in self.assessments:
+            self.assessments[new_email] = self.assessments.pop(old_email)
+
+    # ----- assessments ----------------------------------------------------
+
+    def assess(
+        self,
+        bib_id: str,
+        *,
+        criterion_id: str,
+        phase_id: str,
+        researcher_email: str,
+        comment: str | None = None,
+    ) -> None:
+        """Record a researcher's screening opinion for a paper.
+
+        Resolves criterion_id and phase_id to the project's objects (KeyError if
+        unknown), validates the researcher, then stores or overwrites that
+        researcher's latest Assessment for the paper. Recomputes the paper's
+        decision from all its reviews using the project's decision strategy, then
+        re-derives snowball placement.
+        """
+        criterion = self._require_criterion(criterion_id)
+        phase = self._require_phase(phase_id)
+        self._require_researcher(researcher_email)
+        if bib_id not in self.papers:
+            raise KeyError(f"Unknown paper {bib_id!r}")
+        self.assessments.setdefault(researcher_email, {})[bib_id] = Assessment(
+            criterion=criterion, phase=phase, comment=comment or None
+        )
+        self.papers[bib_id].decision = strategy_for(self.decision_strategy).decide(
+            self.assessments_of(bib_id).values()
+        )
+        self._derive()
+
+    def remove_assessment(self, bib_id: str, researcher_email: str) -> None:
+        """Remove a researcher's assessment for a paper and recompute its decision.
+
+        Raises KeyError if the paper, researcher, or assessment is not found.
+        Re-derives snowball placement after updating the decision.
+        """
+        self._require_researcher(researcher_email)
+        if bib_id not in self.papers:
+            raise KeyError(f"Unknown paper {bib_id!r}")
+        if researcher_email not in self.assessments or bib_id not in self.assessments[researcher_email]:
+            raise KeyError(f"No assessment for {researcher_email!r} on {bib_id!r}")
+        del self.assessments[researcher_email][bib_id]
+        self.papers[bib_id].decision = strategy_for(self.decision_strategy).decide(
+            self.assessments_of(bib_id).values()
+        )
+        self._derive()
+
+    def assessments_of(self, bib_id: str) -> dict[str, Assessment]:
+        """Gather a paper's assessments across all researchers (email → Assessment)."""
+        return {
+            email: papers[bib_id]
+            for email, papers in self.assessments.items()
+            if bib_id in papers
+        }
+
     # ----- screening ----------------------------------------------------
 
     def include(self, bib_id: str) -> None:
-        """Mark a paper included again and re-derive placement from the seeds.
+        """Manually set a paper's decision to included and re-derive placement.
 
         Including re-enables the paper's outward contribution, so dependents that
         orphaned (or sat at a higher round) when it was excluded are rerouted.
+        Note: this decision is overwritten by `_decide_all()` on reload or
+        strategy change.
         """
-        self.papers[bib_id].included = True
+        self.papers[bib_id].decision = Decision.included
         self._derive()
 
     def exclude(self, bib_id: str) -> None:
-        """Mark a paper excluded: it keeps its set but stops propagating.
+        """Manually set a paper's decision to excluded: it keeps its set but stops propagating.
 
         Its dependents re-derive through other included parents, or become orphans.
+        Note: this decision is overwritten by `_decide_all()` on reload or
+        strategy change.
         """
-        self.papers[bib_id].included = False
+        self.papers[bib_id].decision = Decision.excluded
         self._derive()
+
+    def set_decision_strategy(self, type: DecisionStrategyType) -> None:
+        """Switch the decision strategy and recompute every paper's decision.
+
+        Switching strategy calls `_decide_all()` (recomputes every paper's decision
+        from its reviews) then `_derive()` (rebuilds snowball placement).
+        """
+        self.decision_strategy = type
+        self._decide_all()
+        self._derive()
+
+    def _decide_all(self) -> None:
+        """Recompute every paper's decision from its reviews and the current strategy."""
+        strategy = strategy_for(self.decision_strategy)
+        for bib_id, paper in self.papers.items():
+            paper.decision = strategy.decide(self.assessments_of(bib_id).values())
 
     # ----- placement core ----------------------------------------------
 
@@ -164,7 +366,7 @@ class Project(BaseModel):
             next_frontier: list[str] = []
             for direction, attr in [("backward", "references"), ("forward", "citations")]:
                 for member in frontier:
-                    if not self.papers[member].included:
+                    if self.papers[member].decision is Decision.excluded:
                         continue
                     for nb in getattr(self.papers[member], attr):
                         if nb not in self.papers or nb in placement:
@@ -246,7 +448,8 @@ class Project(BaseModel):
         for paper in self.papers.values():
             paper_repo.save(paper)
         SetRepository(self.path / self._SETS_DIR).save_all(self._build_sets())
-        metadata = self.model_dump(mode="json", exclude={"path", "papers"})
+        ReviewRepository(self.path / self._REVIEW_DIR).save_all(self.assessments)
+        metadata = self.model_dump(mode="json", exclude={"path", "papers", "assessments", "seeds"})
         (self.path / self._METADATA_FILE).write_text(
             yaml.safe_dump(metadata, sort_keys=False, allow_unicode=True),
             encoding="utf-8",
@@ -267,7 +470,35 @@ class Project(BaseModel):
         papers_dir = path / cls._PAPERS_DIR
         paper_list = PaperRepository(papers_dir).load_all() if papers_dir.exists() else []
         papers = {p.bib_id: p for p in paper_list}
-        seeds = set(metadata.get("seeds", []))
-        project = cls(name=metadata["name"], path=path, papers=papers, seeds=seeds)
+        start_set_path = path / cls._SETS_DIR / "start_set.yml"
+        if start_set_path.exists():
+            start_data = yaml.safe_load(start_set_path.read_text(encoding="utf-8"))
+            seeds = set(start_data.get("paper_ids", []))
+        else:
+            seeds = set(metadata.get("seeds", []))
+        criteria = [Criterion(**c) for c in metadata.get("criteria", [])]
+        phases = [Phase(**p) for p in metadata.get("phases", [])]
+        researchers = [Researcher(**r) for r in metadata.get("researchers", [])]
+        review_dir = path / cls._REVIEW_DIR
+        assessments = (
+            ReviewRepository(review_dir).load_all(criteria=criteria, phases=phases)
+            if review_dir.exists()
+            else {}
+        )
+        decision_strategy = DecisionStrategyType(
+            metadata.get("decision_strategy", DecisionStrategyType.majority.value)
+        )
+        project = cls(
+            name=metadata["name"],
+            path=path,
+            papers=papers,
+            seeds=seeds,
+            criteria=criteria,
+            phases=phases,
+            researchers=researchers,
+            assessments=assessments,
+            decision_strategy=decision_strategy,
+        )
+        project._decide_all()
         project._derive()
         return project

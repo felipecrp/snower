@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from snower.api.schemas import (
     ImportRequest,
     ImportResult,
+    PaperWithAssessments,
     ProjectSummary,
+    ProjectUpdate,
     SetSummary,
 )
 from snower.bibtex import parse_bibtex
@@ -22,27 +24,37 @@ def _load_or_create(path: Path) -> Project:
     return project
 
 
-_project: Project | None = None
+_project_path: Path | None = None
+
+
+def _get_path() -> Path:
+    global _project_path
+    if _project_path is None:
+        _project_path = Path(os.environ.get("SNOWER_PROJECT_PATH", "project"))
+        _load_or_create(_project_path)  # ensure project.yml exists
+    return _project_path
 
 
 def get_project() -> Project:
-    """FastAPI dependency that returns the single project for this server instance.
+    """FastAPI dependency: loads the project from disk on every request.
 
     The project path is read from ``SNOWER_PROJECT_PATH`` (default: ``./project``).
-    The project is loaded once and cached for the lifetime of the process.
+    Reloading per-request means edits to ``project.yml`` (name, etc.) are always
+    picked up without restarting the server.
     """
-    global _project
-    if _project is None:
-        path = Path(os.environ.get("SNOWER_PROJECT_PATH", "project"))
-        _project = _load_or_create(path)
-    return _project
+    return Project.load(_get_path())
 
 
 def _summary(project: Project) -> ProjectSummary:
     return ProjectSummary(
         name=project.name,
+        folder=str(project.path.resolve()),
         seeds=sorted(project.seeds),
         sets=[SetSummary.from_paper_set(ps) for ps in project.sets()],
+        criteria=list(project.criteria),
+        phases=list(project.phases),
+        researchers=list(project.researchers),
+        decision_strategy=project.decision_strategy.value,
     )
 
 
@@ -55,16 +67,27 @@ def get_project_summary(project: Project = Depends(get_project)):
     return _summary(project)
 
 
+@router.patch("/", response_model=ProjectSummary)
+def update_project(body: ProjectUpdate, project: Project = Depends(get_project)):
+    """Update project-level settings (currently: decision_strategy)."""
+    project.set_decision_strategy(body.decision_strategy)
+    project.save()
+    return _summary(project)
+
+
 @router.get("/sets", response_model=list[SetSummary])
 def list_sets(project: Project = Depends(get_project)):
     """List all paper sets derived from the citation graph."""
     return [SetSummary.from_paper_set(ps) for ps in project.sets()]
 
 
-@router.get("/sets/{set_name}/papers", response_model=list)
+@router.get("/sets/{set_name}/papers", response_model=list[PaperWithAssessments])
 def list_papers_in_set(set_name: str, project: Project = Depends(get_project)):
-    """List papers in a named set (e.g. ``start-0``, ``backward-1``)."""
-    return project.papers_in(set_name)
+    """List papers in a named set with their full assessment maps."""
+    return [
+        PaperWithAssessments(**p.model_dump(), assessments=project.assessments_of(p.bib_id))
+        for p in project.papers_in(set_name)
+    ]
 
 
 @router.post("/import", response_model=ImportResult)

@@ -3,6 +3,7 @@ from pathlib import Path
 import yaml
 
 from snower.paper import Paper
+from snower.review import Assessment
 
 
 class PaperRepository:
@@ -37,7 +38,7 @@ class PaperRepository:
         self.directory.mkdir(parents=True, exist_ok=True)
         path = self.directory / f"{paper.bib_id}.yml"
         path.write_text(
-            yaml.safe_dump(paper.model_dump(mode="json"), sort_keys=False, allow_unicode=True),
+            yaml.safe_dump(paper.model_dump(mode="json", exclude={"decision"}), sort_keys=False, allow_unicode=True),
             encoding="utf-8",
         )
         return path
@@ -116,3 +117,78 @@ class SetRepository:
             PaperSet.model_validate(yaml.safe_load(p.read_text(encoding="utf-8")))
             for p in sorted(self.directory.glob("*.yml"))
         ]
+
+
+class ReviewRepository:
+    """File-backed store of per-researcher assessments, one YAML file per
+    researcher named ``{email}.yml`` under a base directory.
+
+    Files are rewritten in full on every save; the ``review/`` directory is the
+    source of truth for assessments between server restarts.
+    """
+
+    def __init__(self, directory: str | Path) -> None:
+        """Initialise with the path to the ``review/`` storage directory."""
+        self.directory = Path(directory)
+
+    def save_all(self, assessments: dict[str, dict[str, Assessment]]) -> None:
+        """Replace the directory's contents with all researcher assessments.
+
+        Clears every existing ``*.yml`` first (so a deleted researcher's file
+        disappears), then writes one ``{email}.yml`` per researcher. Each file
+        records only ``criterion_id`` and ``phase_id`` per paper, sorted by
+        bib_id for merge-friendly diffs. Researchers with no assessments are skipped.
+        """
+        self.directory.mkdir(parents=True, exist_ok=True)
+        for stale in self.directory.glob("*.yml"):
+            stale.unlink()
+        for email, papers in assessments.items():
+            if not papers:
+                continue
+            path = self.directory / f"{email}.yml"
+            data = {
+                bib_id: {
+                    "criterion_id": a.criterion.id,
+                    "phase_id": a.phase.id,
+                    **({"comment": a.comment} if a.comment else {}),
+                }
+                for bib_id, a in sorted(papers.items())
+            }
+            path.write_text(
+                yaml.safe_dump(data, sort_keys=False, allow_unicode=True),
+                encoding="utf-8",
+            )
+
+    def load_all(
+        self,
+        criteria: list | None = None,
+        phases: list | None = None,
+    ) -> dict[str, dict[str, Assessment]]:
+        """Read each ``*.yml`` file; stem → email, contents → {bib_id: Assessment}.
+
+        Resolves ``criterion_id`` and ``phase_id`` against the provided lists.
+        Also handles the legacy embedded format for backward compatibility.
+        """
+        from snower.review import Criterion, Phase
+
+        criteria_map = {c.id: c for c in (criteria or [])}
+        phases_map = {p.id: p for p in (phases or [])}
+        result: dict[str, dict[str, Assessment]] = {}
+        for path in sorted(self.directory.glob("*.yml")):
+            email = path.stem
+            raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            assessments: dict[str, Assessment] = {}
+            for bib_id, v in raw.items():
+                if "criterion_id" in v:
+                    criterion = criteria_map.get(v["criterion_id"])
+                    phase = phases_map.get(v["phase_id"])
+                    if criterion and phase:
+                        assessments[bib_id] = Assessment(
+                            criterion=criterion,
+                            phase=phase,
+                            comment=v.get("comment"),
+                        )
+                else:
+                    assessments[bib_id] = Assessment.model_validate(v)
+            result[email] = assessments
+        return result

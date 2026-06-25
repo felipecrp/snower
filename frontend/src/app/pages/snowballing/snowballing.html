@@ -1,6 +1,3 @@
-<h1 class="page-title">Snowballing</h1>
-<p class="page-subtitle">Browse derived sets and screen papers for inclusion.</p>
-
 @if (loadingSets()) {
   <div class="spinner" role="status">
     <span class="visually-hidden">Loading…</span>
@@ -24,6 +21,63 @@
           </li>
         }
       </ul>
+
+      <div class="snowball-options">
+        <div class="snowball-option-group">
+          <div class="snowball-option-heading">Sort By</div>
+          <select class="snowball-sort-select"
+                  [value]="sortBy()"
+                  (change)="sortBy.set($any($event.target).value)"
+                  aria-label="Sort by">
+            <option value="title">Title</option>
+            <option value="author">Author (last name)</option>
+          </select>
+        </div>
+        <div class="snowball-option-group">
+          <div class="snowball-option-heading">Show</div>
+          <label class="snowball-option-check">
+            <input type="checkbox" [checked]="showVotes()" (change)="showVotes.set($any($event.target).checked)" />
+            Votes
+          </label>
+          <label class="snowball-option-check">
+            <input type="checkbox" [checked]="showDecision()" (change)="showDecision.set($any($event.target).checked)" />
+            Decision
+          </label>
+        </div>
+        <div class="snowball-option-group">
+          <div class="snowball-option-heading">Filter</div>
+          <div class="snowball-option-subgroup">
+            <div class="snowball-option-subheading">My review</div>
+            <label class="snowball-option-check">
+              <input type="checkbox" [checked]="filterMyIncluded()" (change)="filterMyIncluded.set($any($event.target).checked)" />
+              Included
+            </label>
+            <label class="snowball-option-check">
+              <input type="checkbox" [checked]="filterMyExcluded()" (change)="filterMyExcluded.set($any($event.target).checked)" />
+              Excluded
+            </label>
+            <label class="snowball-option-check">
+              <input type="checkbox" [checked]="filterMyUndecided()" (change)="filterMyUndecided.set($any($event.target).checked)" />
+              Undecided
+            </label>
+          </div>
+          <div class="snowball-option-subgroup">
+            <div class="snowball-option-subheading">Final Decision</div>
+            <label class="snowball-option-check">
+              <input type="checkbox" [checked]="filterDecisionIncluded()" (change)="filterDecisionIncluded.set($any($event.target).checked)" />
+              Included
+            </label>
+            <label class="snowball-option-check">
+              <input type="checkbox" [checked]="filterDecisionExcluded()" (change)="filterDecisionExcluded.set($any($event.target).checked)" />
+              Excluded
+            </label>
+            <label class="snowball-option-check">
+              <input type="checkbox" [checked]="filterDecisionUndecided()" (change)="filterDecisionUndecided.set($any($event.target).checked)" />
+              Undecided
+            </label>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="snowball-papers">
@@ -38,8 +92,11 @@
       } @else if (papers().length === 0) {
         <p class="empty-state">No papers in this set.</p>
       } @else {
+        @if (!session.currentResearcherEmail()) {
+          <div class="alert-note assess-hint">Select a researcher in the top bar to assess papers.</div>
+        }
         <ul class="paper-list">
-          @for (paper of papers(); track paper.bib_id) {
+          @for (paper of filteredPapers(); track paper.bib_id) {
             <li class="paper-item">
               <div class="paper-meta">
                 <div class="paper-title">{{ paper.title }}</div>
@@ -49,33 +106,57 @@
                   }
                   @if (paper.year) { · {{ paper.year }} }
                 </div>
-                @if (paper.included) {
-                  <span class="tag-included">included</span>
-                } @else {
-                  <span class="tag-excluded">excluded</span>
-                }
-              </div>
-              <div class="flex-shrink-0">
-                @if (paper.included) {
-                  <button class="btn-exclude"
-                          [disabled]="isScreening(paper)"
-                          (click)="screen(paper, false)">
-                    @if (isScreening(paper)) {
-                      <span class="spinner-border spinner-border-sm" role="status"></span>
-                    } @else {
-                      Exclude
+                @if (paper.bib_id) {
+                  <div class="assess-controls">
+                    @if (showDecision()) {
+                      <span class="badge-decision badge-decision-{{ paper.decision }}">
+                        {{ paper.decision }}
+                      </span>
                     }
-                  </button>
-                } @else {
-                  <button class="btn-include"
-                          [disabled]="isScreening(paper)"
-                          (click)="screen(paper, true)">
-                    @if (isScreening(paper)) {
-                      <span class="spinner-border spinner-border-sm" role="status"></span>
-                    } @else {
-                      Include
-                    }
-                  </button>
+                    <select class="assess-select"
+                            [disabled]="!session.currentResearcherEmail()"
+                            (change)="onPhaseChange(paper, $event)"
+                            aria-label="Phase">
+                      <option value="" [selected]="!getDraftPhase(paper.bib_id)">— phase —</option>
+                      @for (ph of phases(); track ph.id) {
+                        <option [value]="ph.id" [selected]="getDraftPhase(paper.bib_id) === ph.id">{{ ph.id }} - {{ ph.name }}</option>
+                      }
+                    </select>
+                    <select class="assess-select"
+                            [disabled]="!session.currentResearcherEmail()"
+                            (change)="onCriterionChange(paper, $event)"
+                            aria-label="Criterion">
+                      <option value="" [selected]="!getDraftCriterion(paper.bib_id)">— criterion —</option>
+                      @for (cr of criteria(); track cr.id) {
+                        <option [value]="cr.id" [selected]="getDraftCriterion(paper.bib_id) === cr.id">{{ cr.id }} - {{ cr.name }}</option>
+                      }
+                    </select>
+                    <input class="assess-comment"
+                           type="text"
+                           [disabled]="!session.currentResearcherEmail()"
+                           [value]="getDraftComment(paper.bib_id)"
+                           (input)="onCommentChange(paper, $event)"
+                           (blur)="onCommentBlur(paper)"
+                           aria-label="Comment" />
+                  </div>
+                  @if (showVotes()) {
+                    <table class="votes-table">
+                      <tbody>
+                        @for (entry of getAssessments(paper.bib_id); track entry.email) {
+                          <tr>
+                            <td>
+                              <span class="badge-decision badge-decision-{{ isIncluded(entry.assessment) ? 'included' : 'excluded' }}">
+                                {{ isIncluded(entry.assessment) ? 'included' : 'excluded' }}
+                              </span>
+                            </td>
+                            <td class="votes-researcher">{{ entry.name }}</td>
+                            <td class="votes-detail">{{ entry.assessment.phase.id }} - {{ entry.assessment.phase.name }}</td>
+                            <td class="votes-detail">{{ entry.assessment.criterion.id }} - {{ entry.assessment.criterion.name }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  }
                 }
               </div>
             </li>
