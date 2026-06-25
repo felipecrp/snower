@@ -1,6 +1,6 @@
 from snower import parse_bibtex
 
-_BIB = """\
+_BIB = r"""\
 @article{kitchenham2009,
   author = {Kitchenham, Barbara},
   title = {Systematic Literature Reviews in Software Engineering},
@@ -18,6 +18,18 @@ _BIB = """\
   author = {{Barnes and Noble}},
   title = {Modern Publishing Trends},
   year = {2024},
+}
+
+@article{accents2018,
+  author = {Johnson, L and G{\"u}nther-Leopold, I and Waldis, J Kobler and Linder, HP and Mart{\'\i}nez-Fern{\'a}ndez, Silverio and Guzm{\'a}n, Liliana},
+  title = {Quality-aware rapid software development},
+  year = {2018},
+}
+
+@article{accentedfirst2019,
+  author = {Mart{\'\i}nez-Fern{\'a}ndez, Silverio and Jedlitschka, Andreas},
+  title = {Software engineering research},
+  year = {2019},
 }
 """
 
@@ -52,3 +64,15 @@ class DescribeParseBibtex:
         beethoven_paper = papers[1]
         assert len(beethoven_paper.authors) == 2
         assert beethoven_paper.authors[1].family == "Mozart"
+
+    def it_decodes_latex_accents_in_author_names(self):
+        papers = parse_bibtex(_BIB)
+        accent_paper = papers[3]
+        assert accent_paper.authors[1].family == "G\u00fcnther-Leopold"
+        assert accent_paper.authors[4].family == "Mart\u00ednez-Fern\u00e1ndez"
+        assert accent_paper.authors[5].family == "Guzm\u00e1n"
+
+    def it_removes_accents_from_bib_ids(self):
+        papers = parse_bibtex(_BIB)
+        accent_paper = papers[4]
+        assert accent_paper.bib_id == "martinez-fernandez2019software"

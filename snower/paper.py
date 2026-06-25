@@ -1,5 +1,6 @@
 import re
 import string
+import unicodedata
 from enum import Enum
 from pathlib import Path
 
@@ -113,12 +114,13 @@ class PaperFactory:
 
     @staticmethod
     def _strip_latex(text: str) -> str:
-        """Strip LaTeX accent commands, keeping the base letter: {\"a} -> a."""
+        """Strip LaTeX and Unicode accents, keeping the base letter: {\"a} -> a."""
         # Accent commands like {\"a}, {\'e}, {\`o}, {\^i}, {\~n}, {\.c}
         text = re.sub(r'\{\\[^a-zA-Z}][^}]?\}', lambda m: m.group()[-2], text)
         # Named commands like {\ss}, {\ae}, {\i} — remove
         text = re.sub(r'\{\\[a-zA-Z]+\}', '', text)
-        return text.replace('{', '').replace('}', '')
+        text = text.replace('{', '').replace('}', '')
+        return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
 
     @staticmethod
     def _first_relevant_title_word(title: str) -> str | None:
@@ -172,5 +174,3 @@ class PaperFactory:
             url=str_fields.get("url"),
             fields=extra,
         )
-
-

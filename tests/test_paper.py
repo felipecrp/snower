@@ -110,5 +110,3 @@ class DescribePaper:
         )
         paper = PaperFactory().from_entry(entry)
         assert paper.fields["bib_key"] == "kitchenham2009"
-
-
